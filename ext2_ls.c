@@ -246,5 +246,6 @@ int main(int argc, char *argv[]) {
       } while (((unsigned long)dir_entry) % EXT2_BLOCK_SIZE != 0) ;
     }
   }
+  free(tempstr);
   return 0;
 }
