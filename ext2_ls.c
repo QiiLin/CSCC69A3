@@ -79,13 +79,13 @@ int read_path(unsigned char* disk, char* path) {
           // find the current dir entry table go through it and compare it
           // loop it by boundary
           next_index = -1;
-          printf("%d %d %s  %d ddss\n", next_index, current_inode_index, current, temp );
+          // printf("%d %d %s  %d ddss\n", next_index, current_inode_index, current, temp );
           do {
             // remove the ending / from the element
             if (temp[strlen(temp) - 1] == '/') {
                 temp[strlen(temp) - 1] = 0;
             }
-            // printf("%s %s %d %d\n", temp, dir_entry->name, strcmp(temp, dir_entry->name), compare_path_name(dir_entry->name, temp, dir_entry->name_len) );
+             // printf("%s %s %d %d %d\n", temp, dir_entry->name, dir_entry->inode, strcmp(temp, dir_entry->name), compare_path_name(dir_entry->name, temp, dir_entry->name_len) );
             if (compare_path_name(dir_entry->name, temp, dir_entry->name_len) == 0) {
               next_index = dir_entry->inode;
             }
@@ -96,14 +96,15 @@ int read_path(unsigned char* disk, char* path) {
           if (next_index != -1) {
             current_inode_index = next_index;
             break;
-          } else {
-            current_inode_index = -1;
           }
         }
-        printf("%d %s %s  ddss\n", current_inode_index, current, temp );
+        if (next_index == -1) {
+          return -1;
+        }
+        current = strtok(NULL, "/");
+        // printf("%d %s %s  ddss\n", current_inode_index, current, temp );
       }
-      current = strtok(NULL, "-");
-      // it is look for file
+      // it is look for
       if (type != 'd') {
         // error checking: file/dir is invalid
         if (current != NULL) {
@@ -116,15 +117,11 @@ int read_path(unsigned char* disk, char* path) {
 
 /*
 Note if the last is / we need to handle it specially
+Note: the passed in str will be modified
 */
 char* parse_path(char* target_path) {
-  // Note there are a special case to handle
-  // if the path is end with '/' we need to handle it
-  // note that the path sample is "./xxx/wwww/dddd"
-  // or ./eeee/www
-  // loop through / as sperator to parse the path
+  char * temp;
   char* token = strtok(target_path, "/");
-
   return token;
 }
 
@@ -187,7 +184,15 @@ int main(int argc, char *argv[]) {
   disk = read_disk(image_path);
   // goto the target path in the disk image
   // 1. parse the path in to directory
+  char* tempstr = calloc(strlen(current_path)+1, sizeof(char));
+  strcpy(tempstr, current_path);
   passed_path = parse_path(current_path);
+
+  // char* prev = passed_path;
+  // while (prev != NULL) {
+  //   printf("%s dd\n", prev);
+  //   prev = strtok(NULL, "/");
+  // }
   // 2. try to find the directory
   int inode_index = read_path (disk, passed_path);
   if (inode_index == -1) {
@@ -199,12 +204,13 @@ int main(int argc, char *argv[]) {
   // two case to handle here..
   // case file
   if (!S_ISDIR(found_node->i_mode)) {
-    char* prev;
+    passed_path = parse_path(tempstr);
+    char * prev;
     while (passed_path != NULL) {
-      printf("%s dd\n", passed_path);
       prev = passed_path;
-      passed_path = strtok(NULL, "-");
+      passed_path = strtok(NULL, "/");
     }
+    fprintf(stdout, "%s\n", prev);
   } else {
     int i , block_number;
     // case directory
@@ -226,16 +232,17 @@ int main(int argc, char *argv[]) {
         if (option_a == 1 ||
           (compare_path_name(".", dir_entry-> name, dir_entry->name_len) != 0 &&
           compare_path_name("..", dir_entry-> name, dir_entry->name_len) != 0)) {
-        for (int i = 0; i < dir_entry->name_len; ++i) {
-            putchar(dir_entry->name[i]);
-        }
-        if (dir_entry->name_len > 0) {
-            putchar('\n');
-        }
-        }
-        fflush(stdout);
-        dir_entry =  (struct ext2_dir_entry_2 *) (((unsigned long)dir_entry)
-        + dir_entry->rec_len);
+            for (int i = 0; i < dir_entry->name_len; ++i) {
+              char curr = (char) dir_entry->name[i];
+              fprintf(stdout, "%c", curr);
+            }
+            if (dir_entry->name_len > 0) {
+              fprintf(stdout, "\n") ;
+            }
+          }
+          fflush(stdout);
+          dir_entry =  (struct ext2_dir_entry_2 *) (((unsigned long)dir_entry)
+          + dir_entry->rec_len);
       } while (((unsigned long)dir_entry) % EXT2_BLOCK_SIZE != 0) ;
     }
   }
