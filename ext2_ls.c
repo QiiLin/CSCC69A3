@@ -75,23 +75,26 @@ int read_path(unsigned char* disk, char* path) {
             int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * current_inode->i_block[12]);
             block_number = in_dir[i - 12];
           }
-          struct ext2_dir_entry_2 *dir_entry = (struct ext2_dir_entry_2 *) (disk + EXT2_BLOCK_SIZE * block_number);
-          // find the current dir entry table go through it and compare it
-          // loop it by boundary
+          // Get the position in bytes and index to block
+          unsigned long pos = (unsigned long) disk + block_number * EXT2_BLOCK_SIZE;
+          struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
           next_index = -1;
-          // printf("%d %d %s  %d ddss\n", next_index, current_inode_index, current, temp );
           do {
-            // remove the ending / from the element
-            if (temp[strlen(temp) - 1] == '/') {
-                temp[strlen(temp) - 1] = 0;
-            }
-             // printf("%s %s %d %d %d\n", temp, dir_entry->name, dir_entry->inode, strcmp(temp, dir_entry->name), compare_path_name(dir_entry->name, temp, dir_entry->name_len) );
-            if (compare_path_name(dir_entry->name, temp, dir_entry->name_len) == 0) {
-              next_index = dir_entry->inode;
-            }
-            dir_entry = (struct ext2_dir_entry_2 *) (((unsigned long)dir_entry)
-            + dir_entry->rec_len);
-          } while (((unsigned long)dir_entry) % EXT2_BLOCK_SIZE != 0);
+              // Get the length of the current block and type
+              int cur_len = dir->rec_len;
+              if (temp[strlen(temp) - 1] == '/') {
+                  temp[strlen(temp) - 1] = 0;
+              }
+               // printf("%s %s %d %d %d\n", temp, dir_entry->name, dir_entry->inode, strcmp(temp, dir_entry->name), compare_path_name(dir_entry->name, temp, dir_entry->name_len) );
+              if (compare_path_name(dir->name, temp, dir->name_len) == 0) {
+                next_index = dir->inode;
+              }
+              // Update position and index into it
+              pos = pos + cur_len;
+              dir = (struct ext2_dir_entry_2 *) pos;
+              // Last directory entry leads to the end of block. Check if
+              // Position is multiple of block size, means we have reached the end
+          } while (pos % EXT2_BLOCK_SIZE != 0);
           // found the targe next
           if (next_index != -1) {
             current_inode_index = next_index;
@@ -173,13 +176,19 @@ int main(int argc, char *argv[]) {
     } else if (strcmp("-a", argv[2]) == 0) {
       current_path = argv[3];
     } else {
-      fprintf(stderr, "1Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
+      fprintf(stderr, "Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
       exit(1);
     }
   } else {
-    fprintf(stderr, "2Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
+    fprintf(stderr, "Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
     exit(1);
   }
+  if (current_path[0] != '/') {
+    fprintf(stderr, "Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
+    exit(1);
+  }
+
+
   // read the disk image
   disk = read_disk(image_path);
   // goto the target path in the disk image
@@ -223,12 +232,16 @@ int main(int argc, char *argv[]) {
         int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * found_node->i_block[12] );
         block_number = in_dir[i - 12];
       }
-      struct ext2_dir_entry_2 *dir_entry = (struct ext2_dir_entry_2 *) (disk + EXT2_BLOCK_SIZE * block_number);
+
+
+      unsigned long pos = (unsigned long) disk + block_number * EXT2_BLOCK_SIZE;
+      struct ext2_dir_entry_2 *dir_entry = (struct ext2_dir_entry_2 *) (pos);
       // find the current dir entry table go through it and compare it
       // loop it by boundary
       // when the length gets reset to 0 .. either we reach the end of blocks
       // or we reach a empty dir entry and need to stop here
       do {
+        int cur_len = dir_entry->rec_len;
         if (option_a == 1 ||
           (compare_path_name(".", dir_entry-> name, dir_entry->name_len) != 0 &&
           compare_path_name("..", dir_entry-> name, dir_entry->name_len) != 0)) {
@@ -241,9 +254,10 @@ int main(int argc, char *argv[]) {
             }
           }
           fflush(stdout);
-          dir_entry =  (struct ext2_dir_entry_2 *) (((unsigned long)dir_entry)
-          + dir_entry->rec_len);
-      } while (((unsigned long)dir_entry) % EXT2_BLOCK_SIZE != 0) ;
+          pos = pos + cur_len;
+          dir_entry = (struct ext2_dir_entry_2 *) pos;
+
+      } while ( pos % EXT2_BLOCK_SIZE != 0) ;
     }
   }
   free(tempstr);
