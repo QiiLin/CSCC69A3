@@ -10,6 +10,7 @@
 #include "ext2.h"
 
 int check_valid_path(unsigned char *disk, char *path);
+int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name);
 struct ext2_inode *get_inode (unsigned char *disk, int inodenum);
 int allocate_block(unsigned char *disk);
 int allocate_inode(unsigned char *disk, int file_size, char *file_name);
@@ -56,10 +57,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "No such file or directory\n");
         exit(ENOENT);
     }
-    int free_blocks = num_free_blocks(disk);
-    int free_inodes = num_free_inodes(disk);
-    printf("    free blocks: %d\n", free_blocks);
-    printf("    free inodes: %d\n", free_inodes);
     // get file byte size
     int file_size = fileInfo.st_size;
     char *file_name = get_file_name(argv[2]);
@@ -68,6 +65,15 @@ int main(int argc, char **argv) {
     printf("file name is %s, the length of file name is %lu\n", file_name, strlen(file_name));
     printf("file contents is %s\n", file_contents);
     printf("length of contents is %lu\n", strlen(file_contents));
+    int valid_filename = check_valid_file(disk, dir_inode, file_name);
+    if (valid_filename < 0) {
+        fprintf(stderr, "A file named %s already exists in the directory",file_name);
+        exit(EEXIST);
+    }
+    int free_blocks = num_free_blocks(disk);
+    int free_inodes = num_free_inodes(disk);
+    printf("    free blocks: %d\n", free_blocks);
+    printf("    free inodes: %d\n", free_inodes);
     // allocate new inode for the file
     // int allocated_block = allocate_block(disk);
     // printf("allocated blocknum is %d\n", allocated_blocknum);
@@ -188,6 +194,44 @@ int check_valid_path(unsigned char *disk, char *path) {
     return inodenum;
 }
 
+// given file name and its directory inodenumber, check if file_name is within the direcotry already
+// return 1 if it does not exist, -1 o/w.
+int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
+    printf("\n\n\n");
+    printf("file name to check is %s\n", file_name);
+    struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);
+    unsigned int *arr = dir_inode->i_block;
+     while(*arr != 0){
+        int blocknum = *arr;
+        unsigned long pos = (unsigned long) disk + blocknum * EXT2_BLOCK_SIZE;
+        struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
+        do {
+            int cur_len = dir->rec_len;
+            char type = (dir->file_type == EXT2_FT_REG_FILE) ? 'f' :
+                        ((dir->file_type == EXT2_FT_DIR) ? 'd' : 's');
+            char *name = dir->name;
+            printf("directory name is %s\n", name);
+            //printf("directory type is %s\n", type);
+            printf("directory inode is %d\n", dir->inode);
+            if (type == 'f' && (strcmp(name, file_name) == 0)) {
+                printf("found a file with file_name\n");
+                // found the corresponding directory
+                // set inodenum to this directory's inode
+                // set found_inode to be 1 to break out of the current while loop
+                // to move on to the next inode dirent
+                return -1;
+            }            
+            // Update position and index into it
+            pos = pos + cur_len;
+            dir = (struct ext2_dir_entry_2 *) pos;
+            // Last directory entry leads to the end of block. Check if
+            // Position is multiple of block size, means we have reached the end
+        } while(pos % EXT2_BLOCK_SIZE != 0);
+        *arr++;
+     }
+    return 1;
+}
+
 int get_rec_len(int name_len) {
     int padding = 4 - (name_len % 4);
     return 8 + name_len + padding;
@@ -197,7 +241,7 @@ int allocate_dirent(unsigned char *disk, char *file_name, int allocated_inodenum
     struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);
     // init a new dir_ent struct
     struct ext2_dir_entry_2 *new_dirent = (struct ext2_dir_entry_2*)malloc(sizeof(struct ext2_dir_entry_2));
-    new_dirent->file_type |= EXT2_S_IFREG;
+    new_dirent->file_type = EXT2_FT_REG_FILE;
     new_dirent->name_len = strlen(file_name);
     int new_ent_reclen = get_rec_len(strlen(file_name));
     unsigned int *arr = dir_inode->i_block;
@@ -229,7 +273,6 @@ int allocate_dirent(unsigned char *disk, char *file_name, int allocated_inodenum
     new_dirent->rec_len = prev_ent_reclen - prev_ent_actual_reclen;
     printf("new ent rec len is %d\n", new_dirent->rec_len);
     new_dirent->inode = allocated_inodenum;
-    int rounded_len = strlen(file_name) + (4 - strlen(file_name) % 4);
     strncpy(new_dirent->name, file_name, strlen(file_name));
     dir = (struct ext2_dir_entry_2 *) pos;
     memcpy(dir, new_dirent, new_ent_reclen);
@@ -332,7 +375,7 @@ int allocate_inode(unsigned char *disk, int file_size, char *file_name) {
                 new_inode->i_size = file_size;
                 // memcpy the new inode into memory
                 struct ext2_inode *inode = get_inode(disk, inodenum);
-                memcpy(inode, new_inode, EXT2_BLOCK_SIZE);
+                memcpy(inode, new_inode, sizeof(struct ext2_inode));
                 return inodenum;
             }
         }
