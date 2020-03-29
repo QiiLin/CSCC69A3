@@ -43,7 +43,7 @@ int compare_path_name (char *s1, char *s2, int len) {
 read the path and try to find its target inode from disk
 and return the inode number
 **/
-int read_path(unsigned char* disk, char* path) {
+int read_path (unsigned char* disk, char* path) {
   struct ext2_inode * current_inode;
   int block_number;
   int current_inode_index = EXT2_ROOT_INO;

@@ -26,13 +26,14 @@ unsigned char *disk;
 
 int main(int argc, char **argv) {
     if(argc != 4) {
-        fprintf(stderr, "Usage: readimg <ext2 image file name> <file path on your OS> <abs file path on image>\n");
+        fprintf(stderr, "Usage: ext2_cp <ext2 image file name> <file path on your OS> <abs file path on image>\n");
         exit(1);
     }
     int fd = open(argv[1], O_RDWR);
     int fd2 = open(argv[2], O_RDONLY);
     if (fd2 < 0) {
-        return -ENOENT;
+        perror("Reading local file unsuccessfully");
+        return (ENOENT);
     }
     disk = mmap(NULL, 128 * 1024, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(disk == MAP_FAILED) {
@@ -207,18 +208,14 @@ int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
         struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
         do {
             int cur_len = dir->rec_len;
-            char type = (dir->file_type == EXT2_FT_REG_FILE) ? 'f' :
-                        ((dir->file_type == EXT2_FT_DIR) ? 'd' : 's');
             char *name = dir->name;
             printf("directory name is %s\n", name);
             //printf("directory type is %s\n", type);
             printf("directory inode is %d\n", dir->inode);
-            if (type == 'f' && (strcmp(name, file_name) == 0)) {
-                printf("found a file with file_name\n");
-                // found the corresponding directory
-                // set inodenum to this directory's inode
-                // set found_inode to be 1 to break out of the current while loop
-                // to move on to the next inode dirent
+            if ((strcmp(name, file_name) == 0)) {
+                printf("found a file/dir with file_name\n");
+                // found a file/dir with the same name
+                // return -1.
                 return -1;
             }            
             // Update position and index into it
