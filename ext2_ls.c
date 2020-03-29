@@ -42,8 +42,11 @@ int compare_path_name (char *s1, char *s2, int len) {
 /**
 read the path and try to find its target inode from disk
 and return the inode number
+mode 0 => just find the indoe number for either file or folder
+mode 1 => return ENOENT for the not found directory
+mode 2 => return ENOENT for the not found file
 **/
-int read_path (unsigned char* disk, char* path) {
+int read_path(unsigned char* disk, char* path) {
   struct ext2_inode * current_inode;
   int block_number;
   int current_inode_index = EXT2_ROOT_INO;
@@ -115,6 +118,12 @@ int read_path (unsigned char* disk, char* path) {
         }
       }
   }
+  // struct ext2_inode *result_inode = get_inode(disk, current_inode_index);
+  // if (mode == 1) {
+  //
+  // } else if ( mode == 2) {
+  //
+  // }
   return current_inode_index;
 }
 
@@ -123,7 +132,6 @@ Note if the last is / we need to handle it specially
 Note: the passed in str will be modified
 */
 char* parse_path(char* target_path) {
-  char * temp;
   char* token = strtok(target_path, "/");
   return token;
 }
@@ -204,6 +212,7 @@ int main(int argc, char *argv[]) {
   // }
   // 2. try to find the directory
   int inode_index = read_path (disk, passed_path);
+  // printf("%d\n", inode_index );
   if (inode_index == -1) {
     // something went wrong
     fprintf(stderr, "No such file or directory\n");
