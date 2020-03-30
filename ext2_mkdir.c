@@ -450,7 +450,7 @@ int main(int argc, char **argv) {
   dir_inode->i_size = EXT2_BLOCK_SIZE;
   dir_inode->i_links_count = 1;
   dir_inode->i_blocks = 0;
-  // init block as dir_entry for hte dir_inode
+  // init block as dir_entry for the dir_inode
   // TODO need to refactor this into a function
   unsigned long pos = (unsigned long) disk + EXT2_BLOCK_SIZE * free_blocks[0];
   struct ext2_dir_entry_2 *dir_entry = (struct ext2_dir_entry_2 *) pos;
@@ -472,7 +472,6 @@ int main(int argc, char **argv) {
   dir_inode->i_links_count ++;
   dir_inode->i_block[0] = free_blocks[0];
   dir_inode->i_blocks = 1;
-  dir_inode->i_links_count ++;
   // udpate the group descriptor
   struct   ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
   bgd->bg_free_blocks_count -= 1;
