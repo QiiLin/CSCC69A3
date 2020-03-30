@@ -199,7 +199,121 @@ struct ext2_super_block *get_super_block(unsigned char *disk) {
     return (struct ext2_super_block *) get_block(disk, 1);
 }
 
-// 
+// helper function
+int delhelper(unsigned char *disk, int block_num, char *name) {
+    unsigned long pos = (unsigned long) get_block(disk, block_num);
+    struct ext2_dir_entry_2 *parent = (struct ext2_dir_entry_2 *) pos;
+
+    int cur_len, len = 0, prefix = 0;
+    struct ext2_dir_entry_2 *curr = parent;
+
+    do {
+        if (pathcmp(curr->name, name, curr->name_len) == 0) {
+            len = curr->rec_len;
+            break;
+        }
+
+        cur_len = curr->rec_len;
+        prefix += cur_len;
+
+        pos = pos + cur_len;
+        curr = (struct ext2_dir_entry_2 *) pos;
+    } while (pos % EXT2_BLOCK_SIZE != 0);
+
+    // if entry not found in the block
+    if (pos % EXT2_BLOCK_SIZE == 0)
+        return 0;
+
+    // dir entry is the last entry in dir
+    if (len != find_rec_len(curr->name_len)) {
+        pos = pos - cur_len;
+        curr = (struct ext2_dir_entry_2 *) pos;
+        curr->rec_len += len;
+    } else {
+        // dir entry in in middle, then move the memory.
+        memmove((char *) pos, (char *) pos + len, EXT2_BLOCK_SIZE - len - prefix);
+        curr = (struct ext2_dir_entry_2 *) pos;
+        do {
+            cur_len = curr->rec_len;
+            pos = pos + cur_len;
+            curr = (struct ext2_dir_entry_2 *) pos;
+        } while ((pos + len) % EXT2_BLOCK_SIZE != 0);
+
+        pos = pos - cur_len;
+        curr = (struct ext2_dir_entry_2 *) pos;
+        curr->rec_len += len;
+
+    }
+    return 1;
+}
+
+// Decrease the link
+void decrease_link_count(unsigned char *disk, unsigned int *block, int blocks) {
+    struct ext2_super_block *sb = get_super_block(disk);
+    char *bmi = get_inode_bitmap(disk);
+    int inum[32];
+    inum[0] = 2;
+    int i, j, index = 0, inumc = 1;
+    for (i = 0; i < sb->s_inodes_count; i++) {
+        unsigned c = bmi[i / 8];
+        if ((c & (1 << index)) > 0 && i > 10) {
+            inum[inumc++] = i + 1;
+        }
+        if (++index == 8)
+            index = 0;
+    }
+
+    for (i = 0; i < inumc; i++) {
+        struct ext2_inode *curr = get_inode(disk, inum[i]);
+        if (curr->i_blocks == blocks) {
+            int same = 1;
+            for (j = 0; j < blocks && j < 13; j++) {
+                if (curr->i_block[j] != block[j]) {
+                    same = 0;
+                    break;
+                }
+            }
+            if (same == 1) {
+                if (0)
+                    curr->i_links_count++;
+                else
+                    curr->i_links_count--;
+            }
+        }
+    }
+}
+
+void reset_bmap(int inode_num, char *bitmap) {
+    inode_num = inode_num - 1;
+    unsigned tem = bitmap[inode_num / 8];
+    bitmap[inode_num / 8] = tem & ~(1 << (inode_num % 8));
+}
+
+int delete_blocks(unsigned char *disk, int inode_num) {
+    int i, blocks = 0;
+    char *bm = get_block_bitmap(disk);
+    struct ext2_inode *p = get_inode(disk, inode_num);
+    for (i = 0; i < p->i_blocks; i++) {
+        if (i >= 12)
+            break;
+        reset_bitmap(bm, p->i_block[i]);
+        blocks++;
+    }
+
+    if (i < p->i_blocks) {
+        int *block = (int *) get_block(disk, p->i_block[12]);
+        for (; i < p->i_blocks; i++) {
+            reset_bitmap(bm, block[i - 12]);
+            blocks++;
+        }
+        reset_bitmap(bm, p->i_block[12]);
+        blocks++;
+    }
+
+    p->i_dtime = time(NULL);
+
+    return blocks;
+}
 
 int main(int argc, char **argv) {
     
@@ -253,7 +367,39 @@ int main(int argc, char **argv) {
     int parent_inode_num = traverse(disk, path);
     struct ext2_inode *parent_inode = get_inode(disk, parent_inode_num);
 
+    // set the variable for deletion
+    int counter;
+    int block;
+    int *tem_list;
+    
+    // delete inode from repository
+    for (counter = 0; i < (parent_inode->i_blocks); counter = counter + 1) {
+        if (counter < 12) {
+            block = parent_inode->i_block[i];
+        } else {
+            tem_list = (int *) get_block(disk, parent_inode->i_block[12]);
+            block = tem_list[i - 12];
+        }
+        if (delhelper(disk, block, name) != 0) {
+            break;
+        } 
+    }
+    // remove the links from the parent inode
+    parent_inode->i_links_counts--;
+    // delete the link count from the inode
+    decrease_link_count(disk, tem_inode->i_block, tem_inode->i_blocks);
 
+    // reset the bitmap
+    reset_bmap(inode_num, get_inode_bitmap(disk));
 
-
+    // check whether the there is not links anymore
+    // if so, delete the block
+    if (tem_inode->i_links_count == 0) {
+        int blocks = delete_blocks(disk, inode_num);
+        struct ext2_group_desc *tem = get_group_desc(disk);
+        tem->bg_free_blocks_count -= (-1 - blocks);
+    } else {
+        struct ext2_group_desc *tem = get_group_desc(disk);
+        tem->bg_free_blocks_count -= (-1);
+    }
 }
