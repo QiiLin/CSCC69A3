@@ -437,6 +437,7 @@ int main(int argc, char **argv) {
   // do the linkage and check if there is enough space
   int result = add_link_to_dir(place_inode, disk, dir_name, free_inode_index,
       EXT2_FT_DIR);
+  place_inode->i_links_count++;
   if (result == -1) {
     // need to revert the bitmap
     set_bitmap(0, disk, free_inode_index, 0);

@@ -9,31 +9,31 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include "ext2.h"
-#include "ext2_cp.c"
-#include "ext2_ls.c"
+#include "ext2_helper.c"
 
 int get_dir_inodenum(unsigned char *disk, char *file_name);
 
 unsigned char *disk;
 
 int main(int argc, char **argv) {
+    // TODO to add check of abs after it is working!
     int soft_link = 0;
     char *disk_file;
     char *source_file;
     char *target_file;
     // there must be at least 3 command line arguments
     if (argc < 4) {
-        fprintf(stderr, "Usage: ext2_ln <ext2 image file name> [-a] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
+        fprintf(stderr, "1Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
         exit(1);
     }
     // no -a option, check if there is one
     if (argc == 4) {
         int opt;
-        while ((opt = getopt(argc, argv, "a:")) != -1) {
+        while ((opt = getopt(argc, argv, "s:")) != -1) {
             switch (opt)
             {
-            case 'a':
-                fprintf(stderr, "Usage: ext2_ln <ext2 image file name> [-a] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
+            case 's':
+                fprintf(stderr, "2Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
                 exit(1);
             default:
                 abort();
@@ -47,9 +47,9 @@ int main(int argc, char **argv) {
         int option_index;
         for (int i = 1; i < argc; i++) {
             char *arg = argv[i];
-            if (strcmp(arg, "-a") == 0) {
+            if (strcmp(arg, "-s") == 0) {
                 if (i == 1) {
-                   fprintf(stderr, "Usage: ext2_ln <ext2 image file name> [-a] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
+                   fprintf(stderr, "3Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
                    exit(1);
                 }
                 option_index = i;
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
             }
         }
         if (soft_link == 0) {
-            fprintf(stderr, "Usage: ext2_ln <ext2 image file name> [-a] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
+            fprintf(stderr, "4Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
             exit(1);
         }
         if (option_index == 2) {
@@ -71,18 +71,17 @@ int main(int argc, char **argv) {
             target_file = argv[3];
         }
     } else {
-        fprintf(stderr, "Usage: ext2_ln <ext2 image file name> [-a] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
+        fprintf(stderr, "5Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
         exit(1);
     }
-    disk_file = argv[1];
-    int fd = open(disk_file, O_RDWR);
-    disk = mmap(NULL, 128 * 1024, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if(disk == MAP_FAILED) {
-	    perror("mmap");
-	    exit(1);
+
+    if (source_file[0] != '/' || target_file[0] != '/') {
+      fprintf(stderr, "6Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
+      exit(1);
     }
+    disk = read_disk(argv[1]);
     // check source file path validity
-    char* tmp_source_file = calloc(strlen(source_file)+1, sizeof(char));
+    char* tmp_source_file = (char *)calloc(strlen(source_file)+1, sizeof(char));
     strcpy(tmp_source_file, source_file);
     char *passed_source_file = parse_path(source_file);
     int source_file_inodenum = read_path(disk, passed_source_file);
@@ -99,10 +98,10 @@ int main(int argc, char **argv) {
         exit(EISDIR);
     }
     // check target file path validity
-    char *tmp_target_file = calloc(strlen(target_file)+1, sizeof(char));
+    char *tmp_target_file = (char *) calloc(strlen(target_file)+1, sizeof(char));
     strcpy(tmp_target_file, target_file);
     printf("first tmp copy is :%s\n", tmp_target_file);
-    char *second_copy_tmp_target_file = calloc(strlen(target_file)+1, sizeof(char));
+    char *second_copy_tmp_target_file = (char *) calloc(strlen(target_file)+1, sizeof(char));
     strcpy(second_copy_tmp_target_file, target_file);
     printf("second copy is :%s\n", second_copy_tmp_target_file);
     char *passed_target_file = parse_path(target_file);
@@ -119,21 +118,126 @@ int main(int argc, char **argv) {
         perror("Target file already existed, please give another path");
         exit(EEXIST);
     }
-    char *target_filename = get_file_name(tmp_target_file);
+    int name_len = strlen(second_copy_tmp_target_file);
+    char target_filename[name_len];
+    get_file_name_temp(tmp_target_file,target_filename);
     printf("after target file name first copy is :%s\n", tmp_target_file);
-    int target_dir_inodenum = 0;
+    // get the target directory number
+    int target_dir_inodenum = read_path(disk, parse_path(tmp_target_file));
+    if (target_dir_inodenum == -1) {
+      perror("Target 2directory doesn't exist");
+      exit(ENOENT);
+    }
+    struct ext2_inode* dest_dir_inode = get_inode(disk, target_dir_inodenum);
+    // if it is not a directroy
+    if (!S_ISDIR(dest_dir_inode->i_mode)) {
+        perror("Target3 directory can not be a file");
+        exit(ENOENT);
+    }
     // if it is a hardlink, copy a dir_ent only and increase source inode link count
     if (!soft_link) {
         source_file_inode->i_links_count++;
-        int target_dir_inodenum = get_dir_inodenum(disk, second_copy_tmp_target_file);
-        printf("the directory inode num is : %d\n", target_dir_inodenum);
+        printf("the directory inode num is : %d %s\n", target_dir_inodenum,target_filename);
+        int result = add_link_to_dir
+        (dest_dir_inode, disk, target_filename, source_file_inodenum,
+            EXT2_FT_REG_FILE);
+        if (result == -1) {
+          fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
+          exit(1);
+        }
         // get target file's directory inode number and get the source file's dir_entry information
-        //int dirent = allocate_dirent(disk, target_filename, source_file_inodenum, target_dir_inodenum);
     } else {
-
+      // // check if the name is more than the max length
+      // if (name_len > EXT2_NAME_LEN) {
+      //   perror("The target filename is too long");
+      //   exit(1);
+      // }
+      int free_inode_index = find_free_inode(disk);
+      if (free_inode_index == -1) {
+        fprintf(stderr, "%s: no inode avaiable\n", argv[0]);
+        exit(1);
+      }
+          printf("path passed in is %d\n", free_inode_index);
+      struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
+      struct ext2_inode * new_inode = initialize_inode(disk, free_inode_index, EXT2_S_IFLNK, name_len*4);
+      if (name_len <= 15) {
+        // TODO need to double check with aht is the i-blocks value
+        new_inode->i_blocks = 1;
+        // set the path into the path variable
+        for (int i = 0; i < name_len; i++) {
+          new_inode->i_block[i] = (unsigned int) second_copy_tmp_target_file[i];
+        }
+        printf("path passed in wis %s\n", (unsigned char*) new_inode->i_block);
+        // update bit map for inode
+        set_bitmap(0, disk, free_inode_index, 1);
+        // update the dest directory with a new dir_entry
+        int result = add_link_to_dir(dest_dir_inode, disk, target_filename, free_inode_index,
+            EXT2_FT_SYMLINK);
+        if (result == -1) {
+          // need to revert the bitmap
+          set_bitmap(0, disk, free_inode_index, 0);
+          fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
+          exit(1);
+        }
+        // remember to update the i_links_count
+        // dest_dir_inode->i_links_count++;
+        // udpate the group descriptor
+        bgd->bg_free_inodes_count -= 1;
+      } else {
+        // count how many block we needed here
+        int required_block = ((name_len*4) / EXT2_BLOCK_SIZE) + 1;
+        printf("required_block %d %d\n", name_len, required_block);
+        // get the free blocks
+        int* free_blocks = find_free_blocks(disk, required_block);
+        for (int i = 0; i < required_block; i++) {
+          if (free_blocks[i] == -1) {
+            fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
+            exit(1);
+          }
+        }
+        // claim those block
+        for (int i = 0; i < required_block; i++) {
+          set_bitmap(0, disk, free_blocks[i], 1);
+        }
+        // claim those inode
+        set_bitmap(0, disk, free_inode_index, 1);
+        // create the linkage
+        int result = add_link_to_dir(dest_dir_inode, disk, target_filename, free_inode_index,
+            EXT2_FT_SYMLINK);
+        if (result == -1) {
+          // need to revert the bitmap
+          for (int i = 0; i < required_block; i++) {
+            set_bitmap(0, disk, free_blocks[i], 0);
+          }
+          set_bitmap(0, disk, free_inode_index, 0);
+          fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
+          exit(1);
+        }
+        // start fill the data
+        new_inode->i_blocks = required_block;
+        new_inode->i_size = required_block*EXT2_BLOCK_SIZE;
+        // fills the path in it
+        // NOTE: this doesn't handle the case where the path length*4 is bigger than
+        // 1024*12
+        int start = 0;
+        int end = 0;
+        for (int i = 0; i < required_block; i++) {
+          // get the start of block
+          unsigned char * current_block = (unsigned char *) disk + EXT2_BLOCK_SIZE * free_blocks[i];
+          if (i == required_block-1) {
+            start = i*EXT2_BLOCK_SIZE;
+            end = start + (name_len*4) % EXT2_BLOCK_SIZE;
+          } else {
+            start =  i*EXT2_BLOCK_SIZE;
+            end = (i+1) *EXT2_BLOCK_SIZE;
+          }
+          memcpy(current_block, substr(second_copy_tmp_target_file, start, end), end - start);
+        }
+        // udpate the group descriptor
+        bgd->bg_free_inodes_count -= 1;
+        bgd->bg_free_blocks_count -= required_block;
+      }
     }
-    // if it is a softlink, create a new inode where the data is the file path to the source file
-    
 }
 
 int get_dir_inodenum(unsigned char *disk, char *path) {
@@ -166,7 +270,7 @@ int get_dir_inodenum(unsigned char *disk, char *path) {
                     // to move on to the next inode dirent
                     inodenum = dir->inode;
                     found_inode = 1;
-                }            
+                }
                 // Update position and index into it
                 pos = pos + cur_len;
                 dir = (struct ext2_dir_entry_2 *) pos;

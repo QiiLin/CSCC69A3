@@ -581,6 +581,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
   struct ext2_dir_entry_2 *new_dir;
   unsigned long pos;
   // loop throgh the place inode's blocks
+  printf("%s and %d \n",  dir_name, input_inode);
   for (i = 0; i < place_inode->i_blocks; ++i) {
       if (i < 12) {
           block_num = place_inode->i_block[i];
@@ -591,6 +592,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
       pos = (unsigned long) disk + block_num * EXT2_BLOCK_SIZE;
       struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
       inserted = 0;
+      printf("%s and block %d \n",  dir_name, block_num);
       do {
           // Get the length of the current block and type
           int cur_len = dir->rec_len;
@@ -599,7 +601,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
             // put it in and break the loop;
             // 1. decrease the res_length of current entry
             // printf("%s %d %d %d\n", dir->name, cur_len, get_min_rec_len(dir->name_len), get_min_rec_len(strlen(dir_name)) );
-            dir->rec_len = cur_len - get_min_rec_len(strlen(dir_name));
+            dir->rec_len = get_min_rec_len(dir->name_len);
             // 2. creat a new entry
             pos = pos + dir->rec_len;
             new_dir = (struct ext2_dir_entry_2 *) pos;
@@ -607,7 +609,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
             strcpy(new_dir->name, dir_name);
             new_dir->name_len = strlen(dir_name);
             new_dir->inode = input_inode;
-            new_dir-> rec_len = get_min_rec_len(new_dir->name_len);
+            new_dir-> rec_len = cur_len - dir->rec_len;
             new_dir-> file_type = block_type;
             inserted = 1;
             break;
@@ -658,9 +660,58 @@ int add_link_to_dir(struct ext2_inode* place_inode,
     set_bitmap(1, disk, free_blocks[0], 1);
     // once the allocate and operation is truely completed
     block_usage = block_usage + 1;
-    struct   ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
+    struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
     bgd->bg_free_blocks_count -= block_usage;
     // also update the block usage
   }
   return 0;
+}
+
+
+void get_file_name_temp(char *file_path, char* dir_name) {
+   // loop through the path and remove the last directory in it
+   // and store it somewhere,
+   int i;
+   int prev = -1;
+   int path_length = strlen(file_path);
+   int counter = 0;
+   for (i = 0; i < path_length; i++) {
+     // if the current is sperator
+     if (file_path[i] == '/') {
+       prev = i;
+       // reset dir_name
+       dir_name[0] = '\0';
+       counter = 0;
+     } else {
+       //keep storing dir_name;
+       dir_name[counter] = file_path[i];
+       counter = counter + 1;
+       dir_name[counter] = '\0';
+     }
+   }
+   // note there has to be at least on / so prev is always not -1
+   file_path[prev] = '\0';
+   printf("%s\n",  dir_name);
+}
+
+
+struct ext2_inode * initialize_inode(unsigned char* disk, int inode_num, unsigned short type, int size ){
+  struct ext2_inode *new_inode = get_inode(disk, inode_num);
+  new_inode->i_mode = type;
+  new_inode->i_size = size;
+  new_inode->i_links_count = 1;
+  new_inode->i_blocks = 0;
+  return new_inode;
+}
+
+/**
+this return the sub string from i to j - 1
+**/
+char* substr(char * path, int i , int j) {
+  char res[j - i + 1];
+  for ( int k = i; k < j; j++) {
+    res[k - i] = path[k];
+  }
+  res[j - i] = '\0';
+  return res;
 }
