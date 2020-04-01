@@ -7,384 +7,197 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include "ext2.h"
+#include "ext2_helper.c"
 
-int check_valid_path(unsigned char *disk, char *path);
-int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name);
-struct ext2_inode *get_inode (unsigned char *disk, int inodenum);
-int allocate_block(unsigned char *disk);
-int allocate_inode(unsigned char *disk, int file_size, char *file_name);
-int allocate_dirent(unsigned char *disk, char *file_name, int allocated_inodenum, int dir_inodenum);
-char* get_file_name(char *file_path);
-char* readFileBytes(const char *name);
-int num_free_blocks (unsigned char *disk);
-int num_free_inodes (unsigned char *disk);
-int check_blocks(unsigned char *disk, int file_size);
-int get_rec_len(int name_len);
 
 unsigned char *disk;
 
 int main(int argc, char **argv) {
-    if(argc != 4) {
+    if(argc != 4 || argv[3][0] != '/') {
         fprintf(stderr, "Usage: ext2_cp <ext2 image file name> <file path on your OS> <abs file path on image>\n");
         exit(1);
     }
-    int fd = open(argv[1], O_RDWR);
-    int fd2 = open(argv[2], O_RDONLY);
-    if (fd2 < 0) {
-        perror("Reading local file unsuccessfully");
-        return (ENOENT);
+    FILE * fp = fopen(argv[2], "r");
+    if (fp == NULL) {
+        perror("Reading local file %s unsuccessfully");
+        exit(ENOENT);
     }
-    disk = mmap(NULL, 128 * 1024, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if(disk == MAP_FAILED) {
-	    perror("mmap");
-	    exit(1);
-    }
+    // step 1: read the disk
+    disk = read_disk(argv[1]);
+    // step 2: get info from the file
     struct stat fileInfo;
-    if (fstat(fd2, &fileInfo) != 0) {
+    if (stat(argv[2], &fileInfo) != 0) {
         perror("file was not found");
         exit(ENOENT);
     }
     if (!S_ISREG(fileInfo.st_mode)) {
-        perror("wrong file type given");
+        fprintf(stderr, "%s: wrong file type given\n", argv[2]);
         exit(1);
     }
+    // by defn the file name is the name from the input file
+    char *file_name = get_file_name(argv[2]);
     // check if the path passed in is a valid asbolute path leading to a directory
     // int is_path = check_valid_path(inum, inumc, dirs, dirsin, sb, bmi, bgd, in, argv[3]);
-    
-    int dir_inode = check_valid_path(disk, argv[3]);
-    printf("is_path variable value is %d\n", dir_inode);
-    if (dir_inode < 0) {
-        fprintf(stderr, "No such file or directory\n");
+    int dir_inode = read_path(disk, argv[3]);
+    // init dir_name
+    char* new_file_name;
+    struct ext2_inode *place_inode;
+    // check if the path can be found
+    if (dir_inode == -1) {
+      char dir_name[EXT2_NAME_LEN];
+      // if the target path is looking for directory
+      if (argv[3][strlen(argv[3]) - 1] == '/') {
+          fprintf(stderr, "%s: No such directory\n", argv[3]);
+          exit(ENOENT);
+      }
+      // this will modified the path to the parent directory
+      // and save the name of new file name into the dir_name
+      pop_last_file_name(argv[3], dir_name);
+      // do another check if the parent directory exist
+      dir_inode = read_path(disk, argv[3]);
+      if (dir_inode == -1) {
+        fprintf(stderr, "%s: No such file or directory\n", argv[3]);
         exit(ENOENT);
+      }
+      place_inode = get_inode(disk, dir_inode);
+      // if it is not a directory
+      if (!S_ISDIR(place_inode->i_mode)) {
+        fprintf(stderr, "%s: No such directory\n", argv[3]);
+        exit(ENOENT);
+      }
+      new_file_name = dir_name;
+    } else {
+      new_file_name = file_name;
+      place_inode = get_inode(disk, dir_inode);
+      if (!S_ISDIR(place_inode->i_mode)) {
+        fprintf(stderr, "%s: No such directory\n", argv[3]);
+        exit(ENOENT);
+      }
     }
+    printf("is_path variable value is %d\n", dir_inode);
+    // By Qi: it is not longer needed since check valid path will handle it
+    // if (dir_inode < 0) {
+    //     fprintf(stderr, "No such file or directory\n");
+    //     exit(ENOENT);
+    // }
     // get file byte size
-    int file_size = fileInfo.st_size;
-    char *file_name = get_file_name(argv[2]);
+    long file_size = fileInfo.st_size;
     char *file_contents = readFileBytes(argv[2]);
-    printf("file size is %d\n", file_size);
+    printf("file size is %ld\n", file_size);
     printf("file name is %s, the length of file name is %lu\n", file_name, strlen(file_name));
     printf("file contents is %s\n", file_contents);
     printf("length of contents is %lu\n", strlen(file_contents));
+    printf("fila names is %s\n", file_name);
     int valid_filename = check_valid_file(disk, dir_inode, file_name);
     if (valid_filename < 0) {
         fprintf(stderr, "A file named %s already exists in the directory",file_name);
         exit(EEXIST);
     }
-    int free_blocks = num_free_blocks(disk);
-    int free_inodes = num_free_inodes(disk);
-    printf("    free blocks: %d\n", free_blocks);
-    printf("    free inodes: %d\n", free_inodes);
-    // allocate new inode for the file
-    // int allocated_block = allocate_block(disk);
-    // printf("allocated blocknum is %d\n", allocated_blocknum);
-    int allocated_inode = allocate_inode(disk, file_size, file_name);
-    if (allocated_inode > 0) {
-        int dirent = allocate_dirent(disk, file_name, allocated_inode, dir_inode);
-        printf("finished");
-    } else {
-        // there were not enough inode or block space
-        perror("not enough space for inode or blocks for the file");
+    int current_free_blocks = num_free_blocks(disk);
+    int current_free_inodes = num_free_inodes(disk);
+    printf("    free blocks: %d\n", current_free_blocks);
+    printf("    free inodes: %d\n", current_free_inodes);
+
+    // start the operation
+    // Step 1: make sure we have enough block and inode to perform this
+    // allocate inodes
+    int free_inode_index = find_free_inode(disk);
+    if (free_inode_index == -1) {
+      fprintf(stderr, "%s: No inode avaiable\n", argv[0]);
+      exit(1);
     }
-    return 0;
-
-}
-
-char* get_file_name(char *file_path) {
-   char *token = strtok(file_path, "/");
-   char *ret;
-   /* walk through other tokens */
-   while( token != NULL ) {
-      ret = token;
-      token = strtok(NULL, "/");
-   }
-   return ret;
-}
-
-struct ext2_inode *get_inode (unsigned char *disk, int inodenum) {
-  // stuff from tut exercise
-  // 1. get group descriptor
-  struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
-  // 2. find the target inode, Note -1 is need here it is start at one by
-  // when we store it we start at zero, so -1 offset is need here
-  return (struct ext2_inode *)(disk + bgd->bg_inode_table * EXT2_BLOCK_SIZE) + inodenum - 1;
-}
-
-int num_free_blocks (unsigned char *disk) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
-    return sb->s_free_blocks_count;
-}
-
-int num_free_inodes (unsigned char *disk) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
-    return sb->s_free_inodes_count;
-}
-
-char* readFileBytes(const char *name)  
-{  
-    FILE *fl = fopen(name, "r");  
-    fseek(fl, 0, SEEK_END);  
-    long len = ftell(fl);  
-    char *ret = malloc(len);  
-    fseek(fl, 0, SEEK_SET);  
-    fread(ret, 1, len, fl);  
-    fclose(fl);  
-    return ret;  
-}
-
-int check_blocks(unsigned char *disk, int file_size) {
-    int needed_blocks = file_size / 1024;
-    if (file_size % 1024 != 0) {
-        needed_blocks++;
+    int required_block = file_size/EXT2_BLOCK_SIZE == 0 ?
+    file_size/EXT2_BLOCK_SIZE + 1: file_size/EXT2_BLOCK_SIZE + 2;
+    int indir_block = 0;
+    // check if it need redirect block
+    if (required_block > 12) {
+      indir_block = 1;
     }
-    if (needed_blocks <= num_free_blocks(disk)) {
-        return 1;
+    printf("%d  need blocks \n", required_block);
+    int* free_blocks = find_free_blocks(disk, required_block + indir_block);
+    if (free_blocks[0] == -1) {
+      fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
+      exit(1);
     }
-    return 0;
-}
-
-int check_valid_path(unsigned char *disk, char *path) {
-    if (path[0] != '/') {
-        return -ENOENT;
+    set_bitmap(0, disk, free_inode_index, 1);
+    for (int i = 0; i < required_block + indir_block; i++) {
+      set_bitmap(1, disk, free_blocks[i], 1);
     }
-    int inodenum = EXT2_ROOT_INO;
-    int found_inode;
-    char *splitted_path;
-    int wrong_path = 0;
-    splitted_path = strtok(path, "/");
-    while (splitted_path != NULL && wrong_path == 0) {
-        printf("working on directory %s\n", splitted_path);
-        struct ext2_inode* curr_inode = get_inode(disk, inodenum);
-        unsigned int *arr = curr_inode->i_block;
-        found_inode = 0;
-        while(*arr != 0){
-            int blocknum = *arr;
-            unsigned long pos = (unsigned long) disk + blocknum * EXT2_BLOCK_SIZE;
-            struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
-            do {
-                int cur_len = dir->rec_len;
-                char type = (dir->file_type == EXT2_FT_REG_FILE) ? 'f' :
-                            ((dir->file_type == EXT2_FT_DIR) ? 'd' : 's');
-                char *name = dir->name;
-                printf("directory name is %s\n", name);
-                printf("directory inode is %d\n", dir->inode);
-                if (type == 'd' && (strcmp(name, splitted_path) == 0)) {
-                    printf("found dir\n");
-                    // found the corresponding directory
-                    // set inodenum to this directory's inode
-                    // set found_inode to be 1 to break out of the current while loop
-                    // to move on to the next inode dirent
-                    inodenum = dir->inode;
-                    found_inode = 1;
-                }            
-                // Update position and index into it
-                pos = pos + cur_len;
-                dir = (struct ext2_dir_entry_2 *) pos;
-                // Last directory entry leads to the end of block. Check if
-                // Position is multiple of block size, means we have reached the end
-            } while((pos % EXT2_BLOCK_SIZE != 0) && (found_inode == 0));
-            if (found_inode == 0) {
-                printf("%s", "did not find directory\n");  
-                wrong_path = 1;
-                return -1;
-            }
-            *arr++;
+    // update the directory
+    int result = add_link_to_dir(place_inode, disk, new_file_name, free_inode_index,
+        EXT2_FT_REG_FILE);
+    if (result == -1) {
+      // need to revert the bitmap
+      set_bitmap(0, disk, free_inode_index, 0);
+      for (int i = 0; i < required_block + indir_block; i++) {
+        set_bitmap(1, disk, free_blocks[i], 1);
+      }
+      fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
+      exit(1);
+    }
+    printf("have found a free inode at inodenum %d\n", free_inode_index);
+    printf("has enough blocks? %d\n", required_block);
+    // Step 2: start create inodes and update it property
+    struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, required_block* EXT2_BLOCK_SIZE);
+    file_inode->i_blocks = required_block;
+    // step 3: open file Buffer
+    char tmp_buffer[EXT2_BLOCK_SIZE+1];
+    unsigned int * indirect_block;
+    // step 4: create block and fill the block in there first
+    for(int i = 0; i < required_block; i++) {
+      if (i < 12) {
+        file_inode->i_block[i] = free_blocks[i];
+      } else {
+        // if it reach here then the indir_block must equal to 1
+        // so the  free_blocks[required_block]; exist
+        if (i == 12 ) {
+          // first time access inderect so we need init the indirect_block
+          file_inode->i_block[12] = free_blocks[required_block];
+          indirect_block = (unsigned int *)(disk + file_inode->i_block[12] * EXT2_BLOCK_SIZE);
         }
-        splitted_path = strtok(NULL, "/");
+        indirect_block[i-12] = free_blocks[i];
+      }
     }
-    return inodenum;
-}
-
-// given file name and its directory inodenumber, check if file_name is within the direcotry already
-// return 1 if it does not exist, -1 o/w.
-int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
-    printf("\n\n\n");
-    printf("file name to check is %s\n", file_name);
-    struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);
-    unsigned int *arr = dir_inode->i_block;
-     while(*arr != 0){
-        int blocknum = *arr;
-        unsigned long pos = (unsigned long) disk + blocknum * EXT2_BLOCK_SIZE;
-        struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
-        do {
-            int cur_len = dir->rec_len;
-            char *name = dir->name;
-            printf("directory name is %s\n", name);
-            //printf("directory type is %s\n", type);
-            printf("directory inode is %d\n", dir->inode);
-            if ((strcmp(name, file_name) == 0)) {
-                printf("found a file/dir with file_name\n");
-                // found a file/dir with the same name
-                // return -1.
-                return -1;
-            }            
-            // Update position and index into it
-            pos = pos + cur_len;
-            dir = (struct ext2_dir_entry_2 *) pos;
-            // Last directory entry leads to the end of block. Check if
-            // Position is multiple of block size, means we have reached the end
-        } while(pos % EXT2_BLOCK_SIZE != 0);
-        *arr++;
-     }
-    return 1;
-}
-
-int get_rec_len(int name_len) {
-    int padding = 4 - (name_len % 4);
-    return 8 + name_len + padding;
-}
-
-int allocate_dirent(unsigned char *disk, char *file_name, int allocated_inodenum, int dir_inodenum) {
-    struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);
-    // init a new dir_ent struct
-    struct ext2_dir_entry_2 *new_dirent = (struct ext2_dir_entry_2*)malloc(sizeof(struct ext2_dir_entry_2));
-    new_dirent->file_type = EXT2_FT_REG_FILE;
-    new_dirent->name_len = strlen(file_name);
-    int new_ent_reclen = get_rec_len(strlen(file_name));
-    unsigned int *arr = dir_inode->i_block;
-    int blocknum = *arr;
-    unsigned long pos = (unsigned long) disk + blocknum * EXT2_BLOCK_SIZE;
-    struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
-    // looping all the entries within the directory to find the last entry in the directory
-    do {
-        int cur_len = dir->rec_len;
-        // Update position and index into it
-        pos = pos + cur_len;
-        // check before changing dir so that it does not change when position is at the 0th of the next block
-        if (pos % EXT2_BLOCK_SIZE != 0) {
-            dir = (struct ext2_dir_entry_2 *) pos;
-        }
-        // Last directory entry leads to the end of block. Check if
-        // Position is multiple of block size, means we have reached the end
-    } while((pos % EXT2_BLOCK_SIZE != 0));
-    // now dir has the last entry, change its rec_len to its own rec_len
-    // change new_dirent to suffice 1024 bytes
-    int prev_ent_reclen = dir->rec_len;
-    printf("prev ent rec len is %d\n", prev_ent_reclen);
-    int prev_ent_actual_reclen = get_rec_len(dir->name_len);
-    dir->rec_len = prev_ent_actual_reclen;
-    // position that the prev dir entry is at
-    pos = pos - prev_ent_reclen;
-    // new pos for the new entry
-    pos = pos + prev_ent_actual_reclen;
-    new_dirent->rec_len = prev_ent_reclen - prev_ent_actual_reclen;
-    printf("new ent rec len is %d\n", new_dirent->rec_len);
-    new_dirent->inode = allocated_inodenum;
-    strncpy(new_dirent->name, file_name, strlen(file_name));
-    dir = (struct ext2_dir_entry_2 *) pos;
-    memcpy(dir, new_dirent, new_ent_reclen);
-    return 0;
-}
-
-int allocate_block(unsigned char *disk) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
-    struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
-    // get the block bitmap and find the index of the free block
-    int index2 = 0;
-    char *bm = (char *) (disk + (bgd->bg_block_bitmap * EXT2_BLOCK_SIZE));
-    for (int i = 0; i < sb->s_blocks_count; i++) {
-        unsigned c = bm[i / 8];                     // get the corresponding byte
-        int not_used = (c & (1 << index2)) == 0;
-        // have found the index of a not used block
-        if (not_used) {
-            unsigned char *target_block_byte = bm + i / 8;
-            *target_block_byte |= 1 << (i % 8);
-            printf("have found a free block at blocknum: %d\n", i+1);
-            return i + 1;
-        }
-        if (++index2 == 8) (index2 = 0); // increment shift index, if > 8 reset.
+    int block_number;
+    // step 5: start memcpy stuff into it
+    for(int i = 0; i < required_block; i++) {
+      if (i < 12) {
+        // direct case
+        block_number = file_inode->i_block[i];
+      } else {
+        // indirect case
+        int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * file_inode->i_block[12]);
+        block_number = in_dir[i - 12];
+      }
+      // go through the buffer and copy the right proption of data
+      // Note: we can't just copy exact block size ... that is not needed here
+      // read through each char and place them into the buffer
+      int single_char;
+      int copy_size = 0;
+      while ((single_char = getc(fp)) != EOF) {
+          tmp_buffer[copy_size] = single_char;
+          copy_size = copy_size + 1;
+          if (copy_size == EXT2_BLOCK_SIZE) {
+            break;
+          }
+      }
+      tmp_buffer[copy_size] = '\0';
+      // at null terminated for the last entry
+      if (copy_size < EXT2_BLOCK_SIZE) {
+        copy_size ++;
+      }
+      printf("%d len \n", copy_size);
+      // after that place the stuff in the buffer into the memo
+      unsigned int *block = (unsigned int *)(disk + block_number * EXT2_BLOCK_SIZE);
+      memcpy(block, tmp_buffer, copy_size);
     }
-    return -1;
-}
-
-
-// return the inodenum of the allocated inode, -1 if failed to allocate blocks/inode
-int allocate_inode(unsigned char *disk, int file_size, char *file_name) {
+    // update used block and inodes
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
     // get the inode bitmap to manipulate its bits if there are free inode in the bitmap
     struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
-    char *bmi = (char *) (disk + (bgd->bg_inode_bitmap * EXT2_BLOCK_SIZE));
-    int index2 = 0;
-    if (sb->s_free_inodes_count > 0) {
-        for (int i = 0; i < sb->s_inodes_count; i++) {
-        unsigned c = bmi[i / 8];                     // get the corresponding byte
-        int not_used = (c & (1 << index2)) == 0;
-        if (not_used && i > 10) {
-            printf("have found a free inode at inodenum %d\n", i+1);
-            // found a free inode in the bitmap
-            // if there are enough free blocks, allocate the data blocks for the file
-            // if successful, change inode bitmap and decrease super block and group desc free inode count
-            int has_enough_blocks = check_blocks(disk, file_size);
-            printf("has enough blocks? %d\n", has_enough_blocks);
-            if (has_enough_blocks) {
-                // block_count as well as going to be the index for i->block
-                int block_count = 0;
-                // the inodenum to be returned
-                int inodenum = i + 1;
-                // number of blocks used by this inode
-                int blocks_count = 0 ;
-                // initialize inode struct
-                struct ext2_inode* new_inode = (struct ext2_inode*)malloc(sizeof(struct ext2_inode));
-                // read the contents from the file
-                char tmp_buffer[EXT2_BLOCK_SIZE+1];
-                FILE *fp;
-                fp = fopen(file_name, "r");
-                while( fgets(tmp_buffer, EXT2_BLOCK_SIZE+1, fp) != NULL )
-                {   
-                    // if the block is saved not in indirect block
-                    if (block_count < 12) {
-                        new_inode->i_block[block_count] = allocate_block(disk);
-                        blocks_count += 2;
-                        unsigned int *block = (unsigned int *)(disk + (new_inode->i_block[block_count]) * EXT2_BLOCK_SIZE);
-                        memcpy(block, tmp_buffer, EXT2_BLOCK_SIZE);
-                    } else {
-                        // if saving in the indirect block now
-                        new_inode->i_block[12] = allocate_block(disk);
-                        unsigned int *indirect_block = (unsigned int *)(disk + (new_inode->i_block[12]) * EXT2_BLOCK_SIZE);
-                        blocks_count += 2;
-                        // process first block, then read file again for next blocks
-                        int new_blocknum = allocate_block(disk);
-                        indirect_block[0] = new_blocknum;
-                        unsigned int *block = (unsigned int *)(disk + new_blocknum * EXT2_BLOCK_SIZE);
-                        blocks_count += 2;
-                        memcpy(block, tmp_buffer, EXT2_BLOCK_SIZE);
-                        int indirect_block_count = 1;
-                        while( fgets(tmp_buffer, EXT2_BLOCK_SIZE+1, fp) != NULL ) {
-                            int new_blocknum = allocate_block(disk);
-                            indirect_block[indirect_block_count] = new_blocknum;
-                            unsigned int *block = (unsigned int *)(disk + new_blocknum * EXT2_BLOCK_SIZE);
-                            memcpy(block, tmp_buffer, EXT2_BLOCK_SIZE);
-                            blocks_count += 2;
-                            indirect_block_count++;
-                        }
-                    }
-                    block_count++;
-                }
-                // filling up the bitmap and the inode struct
-                unsigned char *target_inode_byte = bmi + i / 8;
-                *target_inode_byte |= 1 << (i % 8);
-                bgd->bg_free_inodes_count--;
-                sb->s_free_inodes_count--;
-                i = sb->s_inodes_count;
-                new_inode->i_links_count = 1;
-                new_inode->i_mode |= EXT2_S_IFREG;
-                new_inode->i_blocks = blocks_count;
-                new_inode->i_size = file_size;
-                // memcpy the new inode into memory
-                struct ext2_inode *inode = get_inode(disk, inodenum);
-                memcpy(inode, new_inode, sizeof(struct ext2_inode));
-                return inodenum;
-            }
-        }
-        //printf("%d", (c & (1 << index2)) == 0);       // Print the correcponding bit
-        // If that bit was a 1, inode is used, store it into the array.
-        // Note, this is the index number, NOT the inode number
-        // inode number = index number + 1
-        if (++index2 == 8) (index2 = 0); // increment shift index, if > 8 reset.
-    };
-    } else {
-        perror("Theres no enough inode space");
-        return -1;
-    }
-    return -1;
+    bgd->bg_free_inodes_count--;
+    sb->s_free_inodes_count--;
+    bgd->bg_free_blocks_count -= (required_block + indir_block);
+    sb->s_free_blocks_count -= (required_block + indir_block);
+    return 0;
 }
