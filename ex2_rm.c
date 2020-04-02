@@ -25,7 +25,7 @@ unsigned char *get_block(unsigned char*disk, int block_num) {
 }
 
 // Helper function to read group description
-struct ext2_group_desc *get_group_desc(unsigned char *char) {
+struct ext2_group_desc *get_group_desc(unsigned char *disk) {
     return (struct ext2_group_desc *) get_block(disk, 2);
 }
 
@@ -193,7 +193,7 @@ int main(int argc, char **argv) {
     
     // if the inode number is -1
     // Then the directory can not be found
-    if (node_num == -1) {
+    if (inode_num == -1) {
         fprintf(stderr, "%s: No such file or directory\n", argv[0]);
         exit(ENOENT);
     }
@@ -223,7 +223,7 @@ int main(int argc, char **argv) {
         exit(EISDIR);
     }
     // get the parent inode
-    struct ext2_inode *parent_inode = get_inode(disk, parent_inode_num);
+    struct ext2_inode *parent_inode = get_inode(disk, parent_num);
 
     // set the variable for deletion
     int counter;
@@ -236,14 +236,14 @@ int main(int argc, char **argv) {
             block = parent_inode->i_block[counter];
         } else {
             tem_list = (int *) get_block(disk, parent_inode->i_block[12]);
-            block = tem_list[i - 12];
+            block = tem_list[counter - 12];
         }
         if (delhelper(disk, block, name) != 0) {
             break;
         } 
     }
     // remove the links from the parent inode
-    parent_inode->i_links_counts--;
+    parent_inode->i_links_count--;
     // delete the link count from the inode
     decrease_link_count(disk, tem_inode->i_block, tem_inode->i_blocks);
 
