@@ -19,19 +19,6 @@ void show_usuage(char *proginput) {
     fprintf(stderr, "This command's Usage: %s disk_img abs_path\n", proginput);
 }
 
-// Helper function to read ext2 virtual image and load it into memory
-unsigned char *read_image(char *img_path) {
-    unsigned char *disk;
-    int filed;
-    filed = open(img_path, O_RDWR);
-    disk = mmap(NULL, 128 * 1024, PROT_READ | PROT_WRITE, MAP_SHARED, filed, 0);
-    if(disk == MAP_FAILED) {
-      perror("mmap");
-      exit(1);
-    }
-    return disk;
-}
-
 // Helper function to read the block
 unsigned char *get_block(unsigned char*disk, int block_num) {
     return disk + EXT2_BLOCK_SIZE * block_num;
