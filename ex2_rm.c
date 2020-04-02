@@ -13,6 +13,27 @@
 */
 unsigned char *disk;
 
+// check whether the two path name are the same
+int pathcmp(char *s1, char *s2, int len) {
+    int i;
+    for (i = 0; i < len; i++) {
+        if (s2[i] == '\0' || s1[i] != s2[i]) {
+            return 1;
+        }
+    }
+    return (s2[i] == '\0') ? 0 : 1;
+}
+
+int find_rec_len(int num) {
+    int res;
+    if (num % 4 == 0) {
+        res = num / 4;
+    } else {
+        res = num / 4 + 1;
+    }
+    return res * 4 + 8;
+}
+
 /* Helper function for invalid input
 */
 void show_usuage(char *proginput) {
@@ -39,6 +60,7 @@ struct ext2_inode *get_inode_table(unsigned char *disk) {
 char *get_inode_bitmap(unsigned char *disk) {
     struct ext2_group_desc *group_description = get_group_desc(disk);
     return (char *) get_block(disk, group_description->bg_inode_bitmap);
+}
 
 // get the block bitmap
 char *get_block_bitmap(unsigned char *disk) {
@@ -148,17 +170,17 @@ int delete_blocks(unsigned char *disk, int inode_num) {
     for (i = 0; i < p->i_blocks; i++) {
         if (i >= 12)
             break;
-        reset_bitmap(bm, p->i_block[i]);
+        reset_bmap(bm, p->i_block[i]);
         blocks++;
     }
 
     if (i < p->i_blocks) {
         int *block = (int *) get_block(disk, p->i_block[12]);
         for (; i < p->i_blocks; i++) {
-            reset_bitmap(bm, block[i - 12]);
+            reset_bmap(bm, block[i - 12]);
             blocks++;
         }
-        reset_bitmap(bm, p->i_block[12]);
+        reset_bmap(bm, p->i_block[12]);
         blocks++;
     }
 
