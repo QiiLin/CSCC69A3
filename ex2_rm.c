@@ -34,12 +34,12 @@ int len_generator(int len) {
     // check whether the num is divisiable by 4
     // If so, then divide by 4
     // If not, then we need to add 1 in order to create a gap
-    if (num % 4 == 0) {
-        res = num / 4;
+    if (len % 4 == 0) {
+        tem = len / 4;
     } else {
-        res = num / 4 + 1;
+        tem = len / 4 + 1;
     }
-    return res * 4 + 8;
+    return tem * 4 + 8;
 }
 
 /* Helper function for invalid input
