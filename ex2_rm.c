@@ -13,6 +13,35 @@
 */
 unsigned char *disk;
 
+// check whether the two path name are the same
+int path_comparsion(char *s1, char *s2, int len) {
+    int counter;
+    for (counter = 0; counter < len; counter++) {
+        if (s2[counter] == '\0' || s1[counter] != s2[counter]) {
+            return 1;
+        }
+    }
+    if (s2[counter] == '\0') {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+// translate the length
+int len_generator(int len) {
+    int tem;
+    // check whether the num is divisiable by 4
+    // If so, then divide by 4
+    // If not, then we need to add 1 in order to create a gap
+    if (len % 4 == 0) {
+        tem = len / 4;
+    } else {
+        tem = len / 4 + 1;
+    }
+    return tem * 4 + 8;
+}
+
 /* Helper function for invalid input
 */
 void show_usuage(char *proginput) {
@@ -25,7 +54,7 @@ unsigned char *get_block(unsigned char*disk, int block_num) {
 }
 
 // Helper function to read group description
-struct ext2_group_desc *get_group_desc(unsigned char *char) {
+struct ext2_group_desc *get_group_desc(unsigned char *disk) {
     return (struct ext2_group_desc *) get_block(disk, 2);
 }
 
@@ -39,6 +68,7 @@ struct ext2_inode *get_inode_table(unsigned char *disk) {
 char *get_inode_bitmap(unsigned char *disk) {
     struct ext2_group_desc *group_description = get_group_desc(disk);
     return (char *) get_block(disk, group_description->bg_inode_bitmap);
+}
 
 // get the block bitmap
 char *get_block_bitmap(unsigned char *disk) {
@@ -51,22 +81,28 @@ struct ext2_super_block *get_super_block(unsigned char *disk) {
     return (struct ext2_super_block *) get_block(disk, 1);
 }
 
-// helper function
+// helper function for delete
+// This function return 1 whenever we are able to delete the block from the disk
+// Return 0 when we fail to delete the block
 int delhelper(unsigned char *disk, int block_num, char *name) {
+    // get the block using the given block number
     unsigned long pos = (unsigned long) get_block(disk, block_num);
+    // This block is the parent block where we would like to delete
     struct ext2_dir_entry_2 *parent = (struct ext2_dir_entry_2 *) pos;
-
-    int cur_len, len = 0, prefix = 0;
+    // initialize the tem value for further
+    int cur_len, len = 0, tem_len = 0;
     struct ext2_dir_entry_2 *curr = parent;
 
     do {
-        if (pathcmp(curr->name, name, curr->name_len) == 0) {
+        // See whether the file name is current file
+        // If so, no need to add the len for it
+        if (path_comparsion(curr->name, name, curr->name_len) == 0) {
             len = curr->rec_len;
             break;
         }
 
         cur_len = curr->rec_len;
-        prefix += cur_len;
+        tem_len += cur_len;
 
         pos = pos + cur_len;
         curr = (struct ext2_dir_entry_2 *) pos;
@@ -77,13 +113,13 @@ int delhelper(unsigned char *disk, int block_num, char *name) {
         return 0;
 
     // dir entry is the last entry in dir
-    if (len != find_rec_len(curr->name_len)) {
+    if (len != len_generator(curr->name_len)) {
         pos = pos - cur_len;
         curr = (struct ext2_dir_entry_2 *) pos;
         curr->rec_len += len;
     } else {
         // dir entry in in middle, then move the memory.
-        memmove((char *) pos, (char *) pos + len, EXT2_BLOCK_SIZE - len - prefix);
+        memmove((char *) pos, (char *) pos + len, EXT2_BLOCK_SIZE - len - tem_len);
         curr = (struct ext2_dir_entry_2 *) pos;
         do {
             cur_len = curr->rec_len;
@@ -105,22 +141,22 @@ void decrease_link_count(unsigned char *disk, unsigned int *block, int blocks) {
     char *bmi = get_inode_bitmap(disk);
     int inum[32];
     inum[0] = 2;
-    int i, j, index = 0, inumc = 1;
-    for (i = 0; i < sb->s_inodes_count; i++) {
-        unsigned c = bmi[i / 8];
-        if ((c & (1 << index)) > 0 && i > 10) {
-            inum[inumc++] = i + 1;
+    int counter, sec_counter, index = 0, inumc = 1;
+    for (counter = 0; counter < sb->s_inodes_count; counter++) {
+        unsigned c = bmi[counter / 8];
+        if ((c & (1 << index)) > 0 && counter > 10) {
+            inum[inumc++] = counter + 1;
         }
         if (++index == 8)
             index = 0;
     }
 
-    for (i = 0; i < inumc; i++) {
-        struct ext2_inode *curr = get_inode(disk, inum[i]);
+    for (counter = 0; counter < inumc; counter++) {
+        struct ext2_inode *curr = get_inode(disk, inum[counter]);
         if (curr->i_blocks == blocks) {
             int same = 1;
-            for (j = 0; j < blocks && j < 13; j++) {
-                if (curr->i_block[j] != block[j]) {
+            for (sec_counter = 0; sec_counter < blocks && sec_counter < 13; sec_counter++) {
+                if (curr->i_block[sec_counter] != block[sec_counter]) {
                     same = 0;
                     break;
                 }
@@ -142,23 +178,23 @@ void reset_bmap(int inode_num, char *bitmap) {
 }
 
 int delete_blocks(unsigned char *disk, int inode_num) {
-    int i, blocks = 0;
+    int counter, blocks = 0;
     char *bm = get_block_bitmap(disk);
     struct ext2_inode *p = get_inode(disk, inode_num);
-    for (i = 0; i < p->i_blocks; i++) {
-        if (i >= 12)
+    for (counter = 0; counter < p->i_blocks; counter++) {
+        if (counter >= 12)
             break;
-        reset_bitmap(bm, p->i_block[i]);
+        reset_bmap(bm, p->i_block[counter]);
         blocks++;
     }
 
-    if (i < p->i_blocks) {
+    if (counter < p->i_blocks) {
         int *block = (int *) get_block(disk, p->i_block[12]);
-        for (; i < p->i_blocks; i++) {
-            reset_bitmap(bm, block[i - 12]);
+        for (; counter < p->i_blocks; counter++) {
+            reset_bmap(bm, block[counter - 12]);
             blocks++;
         }
-        reset_bitmap(bm, p->i_block[12]);
+        reset_bmap(bm, p->i_block[12]);
         blocks++;
     }
 
@@ -193,7 +229,7 @@ int main(int argc, char **argv) {
     
     // if the inode number is -1
     // Then the directory can not be found
-    if (node_num == -1) {
+    if (inode_num == -1) {
         fprintf(stderr, "%s: No such file or directory\n", argv[0]);
         exit(ENOENT);
     }
@@ -223,7 +259,7 @@ int main(int argc, char **argv) {
         exit(EISDIR);
     }
     // get the parent inode
-    struct ext2_inode *parent_inode = get_inode(disk, parent_inode_num);
+    struct ext2_inode *parent_inode = get_inode(disk, parent_num);
 
     // set the variable for deletion
     int counter;
@@ -236,14 +272,14 @@ int main(int argc, char **argv) {
             block = parent_inode->i_block[counter];
         } else {
             tem_list = (int *) get_block(disk, parent_inode->i_block[12]);
-            block = tem_list[i - 12];
+            block = tem_list[counter - 12];
         }
         if (delhelper(disk, block, name) != 0) {
             break;
         } 
     }
     // remove the links from the parent inode
-    parent_inode->i_links_counts--;
+    parent_inode->i_links_count--;
     // delete the link count from the inode
     decrease_link_count(disk, tem_inode->i_block, tem_inode->i_blocks);
 
