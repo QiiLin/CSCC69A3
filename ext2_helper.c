@@ -238,7 +238,7 @@ int set_bitmap(int mode, unsigned char *disk, int index, int value) {
   if (value == 1) {
     bitmap[index / 8] = c | (1 << (index % 8));
   } else {
-    bitmap[index / 8] &= ~(1 << (index % 8));
+    bitmap[index / 8] = c & ~(1 << (index % 8));
   }
   return 1;
 }
