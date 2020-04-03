@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
   int path_length = strlen(current_path);
   char dir_name[path_length];
   // get file name and remove the last file/directory from the current_path
-  get_file_name_temp(current_path, dir_name);
+  pop_last_file_name(current_path, dir_name);
   // get the inode number fo the parent_directory
   inode_index = read_path(disk, current_path);
   // check if inode is found
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
   // update the link count of the directory and others blocks
   dir_inode->i_links_count ++;
   dir_inode->i_block[0] = free_blocks[0];
-  dir_inode->i_blocks = 1;
+  dir_inode->i_blocks = 2;
   // udpate the group descriptor
   // update used block and inodes
   struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
@@ -105,4 +105,5 @@ int main(int argc, char **argv) {
   sb->s_free_inodes_count --;
   bgd->bg_free_blocks_count --;
   sb->s_free_blocks_count  --;
+  bgd->bg_used_dirs_count ++;
 }

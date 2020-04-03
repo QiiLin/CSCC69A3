@@ -42,7 +42,6 @@ int main(int argc, char **argv) {
         target_file = argv[3];
     // has -a option,
     } else if (argc == 5){
-        int opt;
         int option_index;
         for (int i = 1; i < argc; i++) {
             char *arg = argv[i];
@@ -120,7 +119,9 @@ int main(int argc, char **argv) {
       perror("Target directory doesn't exist");
       exit(ENOENT);
     }
+    printf("after target file remove 1last is :%d\n", target_dir_inodenum);
     struct ext2_inode* dest_dir_inode = get_inode(disk, target_dir_inodenum);
+    printf("after target file remove2 last is :%d\n", target_dir_inodenum);
     // if it is not a directroy
     if (!S_ISDIR(dest_dir_inode->i_mode)) {
         perror("Target directory can not be a file");
@@ -148,7 +149,8 @@ int main(int argc, char **argv) {
       struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
       struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
       struct ext2_inode * new_inode = initialize_inode(disk, free_inode_index, EXT2_S_IFLNK, name_len*4);
-      if (name_len <= 15) {
+      // if (name_len <= 15) {
+      if (0) {
         // TODO need to double check with aht is the i-blocks value
         new_inode->i_blocks = 1;
         // set the path into the path variable
@@ -174,8 +176,7 @@ int main(int argc, char **argv) {
         sb->s_free_inodes_count -= 1;
       } else {
         // count how many block we needed here
-        int required_block = ((name_len*4) / EXT2_BLOCK_SIZE) == 0 ?
-        ((name_len*4) / EXT2_BLOCK_SIZE) : ((name_len*4) / EXT2_BLOCK_SIZE) + 1;
+        int required_block = get_required_block(name_len);
         int indir_block = 0;
         // check if it need redirect block
         if (required_block > 12) {
@@ -188,6 +189,7 @@ int main(int argc, char **argv) {
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
+                printf("requi222222k %d %d\n", name_len, required_block + indir_block);
         // claim those block
         for (int i = 0; i < required_block + indir_block; i++) {
           set_bitmap(0, disk, free_blocks[i], 1);
@@ -206,8 +208,11 @@ int main(int argc, char **argv) {
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
-
+        // start fill the
+        new_inode->i_blocks = required_block;
+        new_inode->i_size = name_len;
         unsigned int * indirect_block;
+        printf("%d\n",1 );
         // start set up blocks
         for(int i = 0; i < required_block; i++) {
           if (i < 12) {
@@ -223,9 +228,7 @@ int main(int argc, char **argv) {
             indirect_block[i-12] = free_blocks[i];
           }
         }
-        // start fill the
-        new_inode->i_blocks = required_block;
-        new_inode->i_size = required_block*EXT2_BLOCK_SIZE;
+                printf("%d\n",2 );
 
         int start = 0;
         int end = 0;
@@ -239,19 +242,23 @@ int main(int argc, char **argv) {
             int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * new_inode->i_block[12]);
             block_number = in_dir[i - 12];
           }
+                    printf("%d\n", 22 );
           // get the start of block
           unsigned char * current_block = (unsigned char *) disk + EXT2_BLOCK_SIZE * block_number;
           if (i == required_block-1) {
             start = i*EXT2_BLOCK_SIZE;
-            end = start + (name_len*4) % EXT2_BLOCK_SIZE;
+            end = start + (name_len) % EXT2_BLOCK_SIZE;
           } else {
             start =  i*EXT2_BLOCK_SIZE;
             end = (i+1) *EXT2_BLOCK_SIZE;
           }
+          printf("%d | %s | %d \n", start,target_file, end);
           char current[EXT2_BLOCK_SIZE + 1];
-          substr(target_file, start, end,current);
+          substr(target_file, start, end, current);
+            printf("%d\n", 1133 );
           memcpy(current_block, current , end - start);
         }
+                printf("%d\n", 3 );
         // udpate the group descriptor
         bgd->bg_free_inodes_count -= 1;
         sb->s_free_inodes_count -= 1;

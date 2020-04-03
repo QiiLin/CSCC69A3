@@ -106,8 +106,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "%s: No inode avaiable\n", argv[0]);
       exit(1);
     }
-    int required_block = file_size/EXT2_BLOCK_SIZE == 0 ?
-    file_size/EXT2_BLOCK_SIZE + 1: file_size/EXT2_BLOCK_SIZE + 2;
+    int required_block = get_required_block(file_size);
     int indir_block = 0;
     // check if it need redirect block
     if (required_block > 12) {
@@ -138,8 +137,8 @@ int main(int argc, char **argv) {
     printf("have found a free inode at inodenum %d\n", free_inode_index);
     printf("has enough blocks? %d\n", required_block);
     // Step 2: start create inodes and update it property
-    struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, required_block* EXT2_BLOCK_SIZE);
-    file_inode->i_blocks = required_block;
+    struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, file_size);
+    file_inode->i_blocks = required_block*2;
     // step 3: open file Buffer
     char tmp_buffer[EXT2_BLOCK_SIZE+1];
     unsigned int * indirect_block;
@@ -169,27 +168,32 @@ int main(int argc, char **argv) {
         int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * file_inode->i_block[12]);
         block_number = in_dir[i - 12];
       }
-      // go through the buffer and copy the right proption of data
-      // Note: we can't just copy exact block size ... that is not needed here
-      // read through each char and place them into the buffer
-      int single_char;
-      int copy_size = 0;
-      while ((single_char = getc(fp)) != EOF) {
-          tmp_buffer[copy_size] = single_char;
-          copy_size = copy_size + 1;
-          if (copy_size == EXT2_BLOCK_SIZE) {
-            break;
-          }
-      }
-      tmp_buffer[copy_size] = '\0';
-      // at null terminated for the last entry
-      if (copy_size < EXT2_BLOCK_SIZE) {
-        copy_size ++;
-      }
-      printf("%d len \n", copy_size);
-      // after that place the stuff in the buffer into the memo
+      // // go through the buffer and copy the right proption of data
+      // // Note: we can't just copy exact block size ... that is not needed here
+      // // read through each char and place them into the buffer
+      // int single_char;
+      // int copy_size = 0;
+      // while ((single_char = getc(fp)) != EOF) {
+      //     tmp_buffer[copy_size] = single_char;
+      //     copy_size = copy_size + 1;
+      //     if (copy_size == EXT2_BLOCK_SIZE) {
+      //       break;
+      //     }
+      // }
+      // tmp_buffer[copy_size] = '\0';
+      // // at null terminated for the last entry
+      // if (copy_size < EXT2_BLOCK_SIZE) {
+      //   copy_size ++;
+      // }
+      // printf("%d len \n", copy_size);
+      // // after that place the stuff in the buffer into the memo
       unsigned int *block = (unsigned int *)(disk + block_number * EXT2_BLOCK_SIZE);
-      memcpy(block, tmp_buffer, copy_size);
+      // memcpy(block, tmp_buffer, copy_size);
+      char* result = fgets(tmp_buffer, EXT2_BLOCK_SIZE+1, fp);
+      if (result == NULL) {
+        printf("%s\n","Something fk up" );
+      }
+      memcpy(block, tmp_buffer, EXT2_BLOCK_SIZE);
     }
     // update used block and inodes
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);

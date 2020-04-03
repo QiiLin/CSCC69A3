@@ -44,15 +44,15 @@ int main(int argc, char *argv[]) {
     } else if (strcmp("-a", argv[2]) == 0) {
       current_path = argv[3];
     } else {
-      fprintf(stderr, "Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
+      fprintf(stderr, "3Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
       exit(1);
     }
   } else {
-    fprintf(stderr, "Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
+    fprintf(stderr, "2Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
     exit(1);
   }
   if (current_path[0] != '/') {
-    fprintf(stderr, "Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
+    fprintf(stderr, "1Usage: %s <image file name> [-a] <absolute path>\n", argv[0]);
     exit(1);
   }
   // read the disk image
@@ -76,8 +76,9 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "%s \n", prev);
   } else {
     int i , block_number;
+    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
     // case directory
-    for (i = 0; i < found_node->i_blocks; i++ ) {
+    for (i = 0; i < ((found_node->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
       if (i < 12) {
         // direct case
         block_number = found_node->i_block[i];
@@ -99,11 +100,11 @@ int main(int argc, char *argv[]) {
           compare_path_name("..", dir_entry-> name, dir_entry->name_len) != 0)) {
             for (int i = 0; i < dir_entry->name_len; ++i) {
               char curr = (char) dir_entry->name[i];
-              fprintf(stdout, "%c \n", curr);
+              fprintf(stdout, "%c", curr);
             }
-            // if ((pos + cur_len) % EXT2_BLOCK_SIZE != 0) {
-            //   fprintf(stdout, "\n") ;
-            // }
+            if (dir_entry->name_len > 0) {
+              fprintf(stdout, "\n") ;
+            }
           }
           fflush(stdout);
           pos = pos + cur_len;

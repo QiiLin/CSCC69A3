@@ -20,7 +20,7 @@ char* get_file_name(char *file_path);
 char* readFileBytes(const char *name);
 int num_free_blocks (unsigned char *disk);
 int num_free_inodes (unsigned char *disk);
-int check_blocks(unsigned char *disk, int file_size);
+int get_required_block(int file_size);
 int get_rec_len(int name_len);
 
 
@@ -76,16 +76,16 @@ char* readFileBytes(const char *name)
     return ret;
 }
 
-// int check_blocks(unsigned char *disk, int file_size) {
-//     int needed_blocks = file_size / 1024;
-//     if (file_size % 1024 != 0) {
-//         needed_blocks++;
-//     }
-//     if (needed_blocks <= num_free_blocks(disk)) {
-//         return 1;
-//     }
-//     return 0;
-// }
+/**
+this returns the neeed block for the given size
+**/
+int get_required_block(int file_size) {
+    int needed_blocks = file_size / EXT2_BLOCK_SIZE;
+    if (file_size % EXT2_BLOCK_SIZE != 0) {
+        needed_blocks++;
+    }
+    return needed_blocks;
+}
 
 int compare_path_name (char *s1, char *s2, int len) {
     int i;
@@ -107,6 +107,7 @@ and return the inode number
 Note: the arg_path will stay the same
 **/
 int read_path(unsigned char* disk, char* arg_path) {
+  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
   // go through the path without change the input
   char* copy_path =(char*) calloc(strlen(arg_path)+1, sizeof(char));
   strcpy(copy_path, arg_path);
@@ -134,7 +135,7 @@ int read_path(unsigned char* disk, char* arg_path) {
       // if the current node is looking for file
       if (type == 'd') {
         // for each blocks, node we starts at 12
-        for (i = 0; i < current_inode->i_blocks; i++ ) {
+        for (i = 0; i < ((current_inode->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
           if (i < 12) {
             // direct case
             block_number = current_inode->i_block[i];
@@ -281,7 +282,6 @@ int *find_free_blocks(unsigned char *disk, int require_block) {
   // used code from tut ex
   struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
   char *bm = (char *) (disk + (bgd->bg_block_bitmap * EXT2_BLOCK_SIZE));
-  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
   // quick way to check
   if (bgd->bg_free_blocks_count < require_block) {
     res[0] = -1;
@@ -327,6 +327,7 @@ linked to the input_inode
 int add_link_to_dir(struct ext2_inode* place_inode,
   unsigned char* disk, char* dir_name, unsigned int input_inode,
   	unsigned char block_type) {
+  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
   // link between the dir_inode and the place_inode
   int block_num;
   int *in_direct_block;
@@ -335,9 +336,10 @@ int add_link_to_dir(struct ext2_inode* place_inode,
   int block_usage = 0;
   struct ext2_dir_entry_2 *new_dir;
   unsigned long pos;
+
   // loop throgh the place inode's blocks
   printf("%s and %d \n",  dir_name, input_inode);
-  for (i = 0; i < place_inode->i_blocks; ++i) {
+  for (i = 0; i < ((place_inode->i_blocks)/(2<<sb->s_log_block_size)); ++i) {
       if (i < 12) {
           block_num = place_inode->i_block[i];
       } else {
@@ -348,38 +350,40 @@ int add_link_to_dir(struct ext2_inode* place_inode,
       struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
       inserted = 0;
       printf("%s and block %d \n",  dir_name, block_num);
+      unsigned long prev_pos;
+      int cur_len;
       do {
           // Get the length of the current block and type
           int cur_len = dir->rec_len;
-          // check if there is room to place a new entry here
-          if (cur_len - get_min_rec_len(dir->name_len) >= get_min_rec_len(strlen(dir_name))) {
-            printf("prev need size %d and need size %d \n",  get_min_rec_len(dir->name_len), get_min_rec_len(strlen(dir_name)));
-            // put it in and break the loop;
-            // 1. decrease the res_length of current entry
-            // printf("%s %d %d %d\n", dir->name, cur_len, get_min_rec_len(dir->name_len), get_min_rec_len(strlen(dir_name)) );
-            dir->rec_len = get_min_rec_len(dir->name_len);
-            // 2. creat a new entry
-            pos = pos + dir->rec_len;
-            new_dir = (struct ext2_dir_entry_2 *) pos;
-            // 3. fill in the data
-            strcpy(new_dir->name, dir_name);
-            new_dir->name_len = strlen(dir_name);
-            new_dir->inode = input_inode;
-            new_dir-> rec_len = cur_len - dir->rec_len;
-            new_dir-> file_type = block_type;
-            printf("prev need size %d and need size %d \n",  dir->rec_len, new_dir-> rec_len);
-            inserted = 1;
-            break;
-          }
+          prev_pos = pos;
           pos = pos + cur_len;
           dir = (struct ext2_dir_entry_2 *) pos;
           // Last directory entry leads to the end of block. Check if
           // Position is multiple of block size, means we have reached the end
       } while (pos % EXT2_BLOCK_SIZE != 0);
-      if (inserted == 1) {
+
+      dir = (struct ext2_dir_entry_2 *) prev_pos;
+      cur_len = dir->rec_len;
+      if (cur_len - get_min_rec_len(dir->name_len) >= get_min_rec_len(strlen(dir_name))) {
+        printf("prev need size %d and need size %d \n",  get_min_rec_len(dir->name_len), get_min_rec_len(strlen(dir_name)));
+        // put it in and break the loop;
+        // 1. decrease the res_length of current entry
+        dir->rec_len = get_min_rec_len(dir->name_len);
+        // 2. creat a new entry
+        pos = prev_pos + dir->rec_len;
+        new_dir = (struct ext2_dir_entry_2 *) pos;
+        // 3. fill in the data
+        strcpy(new_dir->name, dir_name);
+        new_dir->name_len = strlen(dir_name);
+        new_dir->inode = input_inode;
+        new_dir-> rec_len = cur_len - dir->rec_len;
+        new_dir-> file_type = block_type;
+        printf("prev need size %d and need size %d \n",  dir->rec_len, new_dir-> rec_len);
+        inserted = 1;
         break;
       }
   }
+  printf("prev need s \n");
   if (inserted != 1) {
     // create a new block and link it
     // 1. create a new blocks
@@ -421,6 +425,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
     bgd->bg_free_blocks_count -= block_usage;
     // also update the block usage
   }
+    printf("prev need 2s \n");
   return 0;
 }
 
@@ -474,10 +479,13 @@ struct ext2_inode * initialize_inode(unsigned char* disk, int inode_num, unsigne
 this return the sub string from i to j - 1
 **/
 void substr(char * path, int i , int j, char* res) {
-  for ( int k = i; k < j; j++) {
+  printf("%d and %d\n", i , j );
+  for ( int k = i; k < j; k++) {
     res[k - i] = path[k];
   }
+        printf("eeee\n" );
   res[j - i] = '\0';
+          printf("eee222e\n" );
 }
 
 /**
@@ -510,11 +518,12 @@ return >= 0 if inode is found
 // given file name and its directory inodenumber, check if file_name is within the direcotry already
 // return 1 if it does not exist, -1 o/w.
 int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
+    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
     printf("\n\n\n");
     printf("file name to check is %s\n", file_name);
     struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);
     int blocknum;
-    for (int i = 0; i < dir_inode->i_blocks; i++ ) {
+    for (int i = 0; i < ((dir_inode->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
       if (i < 12) {
         // direct case
         blocknum = dir_inode->i_block[i];
