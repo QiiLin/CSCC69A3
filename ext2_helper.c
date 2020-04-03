@@ -134,8 +134,12 @@ int read_path(unsigned char* disk, char* arg_path) {
       char type = (S_ISDIR(current_inode->i_mode)) ? 'd' : ((S_ISREG(current_inode->i_mode)) ? 'f' : 's');
       // if the current node is looking for file
       if (type == 'd') {
+        // used data block
+        int used_data_block = ((current_inode->i_blocks)/(2<<sb->s_log_block_size));
+        // to avoid go through extra block
+        used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
         // for each blocks, node we starts at 12
-        for (i = 0; i < ((current_inode->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
+        for (i = 0; i < used_data_block; i++ ) {
           if (i < 12) {
             // direct case
             block_number = current_inode->i_block[i];
@@ -336,10 +340,12 @@ int add_link_to_dir(struct ext2_inode* place_inode,
   int block_usage = 0;
   struct ext2_dir_entry_2 *new_dir;
   unsigned long pos;
-
+  int used_data_block = ((place_inode->i_blocks)/(2<<sb->s_log_block_size));
+  // to avoid go through extra block
+  used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
   // loop throgh the place inode's blocks
   printf("%s and %d \n",  dir_name, input_inode);
-  for (i = 0; i < ((place_inode->i_blocks)/(2<<sb->s_log_block_size)); ++i) {
+  for (i = 0; i < used_data_block; ++i) {
       if (i < 12) {
           block_num = place_inode->i_block[i];
       } else {
@@ -523,7 +529,10 @@ int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
     printf("file name to check is %s\n", file_name);
     struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);
     int blocknum;
-    for (int i = 0; i < ((dir_inode->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
+    int used_data_block = ((dir_inode->i_blocks)/(2<<sb->s_log_block_size));
+    // to avoid go through extra block
+    used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
+    for (int i = 0; i < used_data_block; i++ ) {
       if (i < 12) {
         // direct case
         blocknum = dir_inode->i_block[i];

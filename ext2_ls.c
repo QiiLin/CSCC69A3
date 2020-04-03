@@ -78,7 +78,12 @@ int main(int argc, char *argv[]) {
     int i , block_number;
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
     // case directory
-    for (i = 0; i < ((found_node->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
+    // used data block
+    int used_data_block = ((found_node->i_blocks)/(2<<sb->s_log_block_size));
+    // to avoid go through extra block
+    used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
+
+    for (i = 0; i < used_data_block; i++ ) {
       if (i < 12) {
         // direct case
         block_number = found_node->i_block[i];

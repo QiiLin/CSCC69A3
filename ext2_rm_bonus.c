@@ -193,35 +193,31 @@ void reset_bmap(int inode_num, char *bitmap) {
 
 int delete_blocks(unsigned char *disk, int inode_num) {
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + EXT2_BLOCK_SIZE);
+    int blocks = 0;
     struct ext2_inode *current = get_inode(disk, inode_num);
     int block_number;
     int i;
-    int indirect_block_index;
-    // used data block count
-    int used_block = ((current->i_blocks)/(2<<sb->s_log_block_size));
-    // to avoid go through extra block
-    int used_data_block = used_block > 12 ? used_block - 1: used_block;
-    for (i = 0; i < used_data_block; i++ ) {
+    for (i = 0; i < ((current->i_blocks)/(2<<sb->s_log_block_size)); i++ ) {
       if (i < 12) {
         // direct case
         block_number = current->i_block[i];
       } else {
         // count in_direct_block as well
         if (i == 12 ) {
-          indirect_block_index = current->i_block[12];
+          blocks += 1;
+          int indirect_block_index = current->i_block[12];
+          set_bitmap(1, disk, indirect_block_index, 0);
         }
         // indirect case
         int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * current->i_block[12]);
         block_number = in_dir[i - 12];
       }
+      blocks += 1;
       set_bitmap(1,disk, block_number, 0);
     }
-    // if there is in_direct_block case
-    if (used_block > 12) {
-      set_bitmap(1, disk, indirect_block_index, 0);
-    }
     current->i_dtime = time(NULL);
-    return used_block;
+
+    return blocks;
 }
 
 int main(int argc, char **argv) {

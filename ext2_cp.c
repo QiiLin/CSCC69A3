@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
     printf("has enough blocks? %d\n", required_block);
     // Step 2: start create inodes and update it property
     struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, file_size);
-    file_inode->i_blocks = required_block*2;
+    file_inode->i_blocks = (required_block + indir_block) *2;
     // step 3: open file Buffer
     char tmp_buffer[EXT2_BLOCK_SIZE+1];
     unsigned int * indirect_block;

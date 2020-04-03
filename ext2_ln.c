@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
           exit(1);
         }
         // start fill the
-        new_inode->i_blocks = required_block;
+        new_inode->i_blocks = (required_block + indir_block) *2;
         new_inode->i_size = name_len;
         unsigned int * indirect_block;
         printf("%d\n",1 );
