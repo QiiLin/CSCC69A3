@@ -70,7 +70,7 @@ struct ext2_super_block *get_super_block(unsigned char *disk) {
 }
 
 int delete_blocks(unsigned char *disk, struct ext2_inode* current) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + EXT2_BLOCK_SIZE);
+    struct ext2_super_block *sb = (struct ext2_super_block *) get_super_block(disk);
     int block_number;
     int i;
     int indirect_block_index;
@@ -153,7 +153,7 @@ This will delete the given tem_inode
 int delete_inodes(unsigned char* disk, struct ext2_inode* tem_inode, int parent_num, char* file_name, int mode) {
   // get the parent inode
   struct ext2_inode *parent_inode = get_inode(disk, parent_num);
-  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + EXT2_BLOCK_SIZE);
+  struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // set the variable for deletion
   int short_hand_flag = 0;
   int counter;
@@ -275,19 +275,19 @@ char* get_file_name(char *file_path) {
 struct ext2_inode *get_inode (unsigned char *disk, int inodenum) {
   // stuff from tut exercise
   // 1. get group descriptor
-  struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
+  struct ext2_group_desc *bgd = get_group_desc(disk);
   // 2. find the target inode, Note -1 is need here it is start at one by
   // when we store it we start at zero, so -1 offset is need here
   return (struct ext2_inode *)(disk + bgd->bg_inode_table * EXT2_BLOCK_SIZE) + inodenum - 1;
 }
 
 int num_free_blocks (unsigned char *disk) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
+    struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
     return sb->s_free_blocks_count;
 }
 
 int num_free_inodes (unsigned char *disk) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
+    struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
     return sb->s_free_inodes_count;
 }
 
@@ -337,7 +337,7 @@ and return the inode number
 Note: the arg_path will stay the same
 **/
 int read_path(unsigned char* disk, char* arg_path) {
-  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
+  struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // go through the path without change the input
   char* copy_path =(char*) calloc(strlen(arg_path)+1, sizeof(char));
   strcpy(copy_path, arg_path);
@@ -460,7 +460,7 @@ mode 1 is for the block update
 **/
 int set_bitmap(int mode, unsigned char *disk, int index, int value) {
   char* bitmap;
-  struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
+  struct ext2_group_desc *bgd = get_group_desc(disk);
   // get the inode bitmap
   if (mode == 0) {
     bitmap = (char *) (disk + (bgd->bg_inode_bitmap * EXT2_BLOCK_SIZE));
@@ -483,10 +483,10 @@ return -1 if there isn't any free inode exist
 **/
 int find_free_inode(unsigned char *disk) {
   // use stuff from tut ex
-  struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
+  struct ext2_group_desc *bgd = get_group_desc(disk);
   // get the inode bitmap
   char *bmi = (char *) (disk + (bgd->bg_inode_bitmap * EXT2_BLOCK_SIZE));
-  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
+  struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   if (bgd->bg_free_inodes_count == 0) {
     return -1;
   } else {
@@ -568,7 +568,7 @@ linked to the input_inode
 int add_link_to_dir(struct ext2_inode* place_inode,
   unsigned char* disk, char* dir_name, unsigned int input_inode,
   	unsigned char block_type) {
-  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
+  struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // link between the dir_inode and the place_inode
   int block_num;
   int *in_direct_block;
@@ -664,7 +664,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
     set_bitmap(1, disk, free_blocks[0], 1);
     // once the allocate and operation is truely completed
     block_usage = block_usage + 1;
-    struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
+    struct ext2_group_desc *bgd = get_group_desc(disk);
     bgd->bg_free_blocks_count -= block_usage;
     // also update the block usage
   }
@@ -732,7 +732,7 @@ void substr(char * path, int i , int j, char* res) {
 // given file name and its directory inodenumber, check if file_name is within the direcotry already
 // return 1 if it does not exist, -1 o/w.
 int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
-    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
+    struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
     printf("\n\n\n");
     printf("file name to check is %s\n", file_name);
     struct ext2_inode* dir_inode = get_inode(disk, dir_inodenum);

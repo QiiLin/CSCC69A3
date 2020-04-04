@@ -70,6 +70,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Parent directory does not exist\n");
         exit(EISDIR);
     }
+    // Delete the inode and update the link correspondingly
     delete_inodes( disk, tem_inode, parent_num,
       file_name, S_ISDIR(tem_inode->i_mode));
 
