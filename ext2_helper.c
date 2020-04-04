@@ -10,18 +10,246 @@
 #include "ext2.h"
 #include <errno.h>
 
-int check_valid_path(unsigned char *disk, char *path);
+
+unsigned char * read_disk(char *image_path);
+int set_bitmap(int mode, unsigned char *disk, int index, int value);
+int compare_path_name (char *s1, char *s2, int len);
+int delete_inodes(unsigned char* disk, struct ext2_inode* tem_inode, int parent_num, char* file_name, int mode);
+void delete_all_entry(unsigned char* disk, struct ext2_super_block *sb, int target_inode, struct ext2_inode* tem_inode);
 int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name);
+char* parse_path(char* target_path);
 struct ext2_inode *get_inode (unsigned char *disk, int inodenum);
-int allocate_block(unsigned char *disk);
-int allocate_inode(unsigned char *disk, int file_size, char *file_name);
-int allocate_dirent(unsigned char *disk, char *file_name, int allocated_inodenum, int dir_inodenum);
+int delete_blocks(unsigned char *disk, struct ext2_inode* current);
 char* get_file_name(char *file_path);
 char* readFileBytes(const char *name);
 int num_free_blocks (unsigned char *disk);
 int num_free_inodes (unsigned char *disk);
 int get_required_block(int file_size);
-int get_rec_len(int name_len);
+int read_path(unsigned char* disk, char* arg_path);
+int get_min_rec_len(int name_len);
+int set_bitmap(int mode, unsigned char *disk, int index, int value);
+int find_free_inode(unsigned char *disk);
+int *find_free_blocks(unsigned char *disk, int require_block);
+int add_link_to_dir(struct ext2_inode* place_inode, unsigned char* disk, char* dir_name, unsigned int input_inode, unsigned char block_type);
+void pop_last_file_name(char *file_path, char* dir_name);
+struct ext2_inode * initialize_inode(unsigned char* disk, int inode_num, unsigned short type, int size);
+void substr(char * path, int i , int j, char* res);
+int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name);
+
+// Helper function to read the block
+unsigned char *get_block(unsigned char*disk, int block_num) {
+    return disk + EXT2_BLOCK_SIZE * block_num;
+}
+
+// Helper function to read group description
+struct ext2_group_desc *get_group_desc(unsigned char *disk) {
+    return (struct ext2_group_desc *) get_block(disk, 2);
+}
+
+// get innode table
+struct ext2_inode *get_inode_table(unsigned char *disk) {
+    struct ext2_group_desc *group_descrption = get_group_desc(disk);
+    return (struct ext2_inode *) get_block(disk, group_descrption->bg_inode_table);
+}
+
+// get the bitmap
+char *get_inode_bitmap(unsigned char *disk) {
+    struct ext2_group_desc *group_description = get_group_desc(disk);
+    return (char *) get_block(disk, group_description->bg_inode_bitmap);
+}
+
+// get the block bitmap
+char *get_block_bitmap(unsigned char *disk) {
+    struct ext2_group_desc *group_description = get_group_desc(disk);
+    return (char *) get_block(disk, group_description->bg_block_bitmap);
+}
+
+// get the super block
+struct ext2_super_block *get_super_block(unsigned char *disk) {
+    return (struct ext2_super_block *) get_block(disk, 1);
+}
+
+int delete_blocks(unsigned char *disk, struct ext2_inode* current) {
+    struct ext2_super_block *sb = (struct ext2_super_block *)(disk + EXT2_BLOCK_SIZE);
+    int block_number;
+    int i;
+    int indirect_block_index;
+    // used data block count
+    int used_block = ((current->i_blocks)/(2<<sb->s_log_block_size));
+    // to avoid go through extra block
+    int used_data_block = used_block > 12 ? used_block - 1: used_block;
+    for (i = 0; i < used_data_block; i++ ) {
+      if (i < 12) {
+        // direct case
+        block_number = current->i_block[i];
+      } else {
+        // count in_direct_block as well
+        if (i == 12 ) {
+          indirect_block_index = current->i_block[12];
+        }
+        // indirect case
+        int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * current->i_block[12]);
+        block_number = in_dir[i - 12];
+      }
+      set_bitmap(1,disk, block_number, 0);
+    }
+    // if there is in_direct_block case
+    if (used_block > 12) {
+      set_bitmap(1, disk, indirect_block_index, 0);
+    }
+    current->i_dtime = time(NULL);
+    return used_block;
+}
+
+/**
+delete all entry for the given directory inode:target_inode
+in reverse order
+**/
+void delete_all_entry(unsigned char* disk, struct ext2_super_block *sb, int target_inode, struct ext2_inode* tem_inode) {
+  int dir_entry_count = 0;
+  int block;
+  int counter;
+  int *tem_list;
+  //  at max the number of entries will always samller than the 1024
+  unsigned long remove_entries[EXT2_BLOCK_SIZE];
+  // go through the entries in the tem_inode
+  int used_data_block = ((tem_inode->i_blocks)/(2<<sb->s_log_block_size));
+  // to avoid go through extra block
+  used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
+  for (counter = 0; counter < used_data_block; counter = counter + 1) {
+      if (counter < 12) {
+          block = tem_inode->i_block[counter];
+      } else {
+          tem_list = (int *) get_block(disk, tem_inode->i_block[12]);
+          block = tem_list[counter - 12];
+      }
+      unsigned long pos = (unsigned long) get_block(disk, block);
+      // This block is the parent block where we would like to delete
+      struct ext2_dir_entry_2 *parent = (struct ext2_dir_entry_2 *) pos;
+      // initialize the tem value for further
+      int cur_len = 0;
+      struct ext2_dir_entry_2 *curr = parent;
+      do {
+          cur_len = curr->rec_len;
+          remove_entries[dir_entry_count] = pos;
+          dir_entry_count += 1;
+          pos = pos + cur_len;
+          curr = (struct ext2_dir_entry_2 *) pos;
+      } while (pos % EXT2_BLOCK_SIZE != 0);
+  }
+  // call it in reverse order
+  for (counter = dir_entry_count -1; counter >= 0; counter --) {
+      struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) remove_entries[counter];
+      struct ext2_inode* current_inode = get_inode(disk, dir->inode);
+      printf("remove entry %s  and inode %d \n", dir->name, dir->inode);
+      // call the delete inode again to delete all the dir_entry of the current inode
+      delete_inodes(disk, current_inode, target_inode, dir->name, S_ISDIR(current_inode->i_mode));
+  }
+}
+
+/**
+This will delete the given tem_inode
+**/
+int delete_inodes(unsigned char* disk, struct ext2_inode* tem_inode, int parent_num, char* file_name, int mode) {
+  // get the parent inode
+  struct ext2_inode *parent_inode = get_inode(disk, parent_num);
+  struct ext2_super_block *sb = (struct ext2_super_block *)(disk + EXT2_BLOCK_SIZE);
+  // set the variable for deletion
+  int short_hand_flag = 0;
+  int counter;
+  int block;
+  int *tem_list;
+  unsigned long target_inode = 0;
+  int used_data_block = ((parent_inode->i_blocks)/(2<<sb->s_log_block_size));
+  // to avoid go through extra block
+  used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
+  // delete dir entry from the parent inode
+  for (counter = 0; counter < used_data_block; counter = counter + 1) {
+      if (counter < 12) {
+          block = parent_inode->i_block[counter];
+      } else {
+          tem_list = (int *) get_block(disk, parent_inode->i_block[12]);
+          block = tem_list[counter - 12];
+      }
+      unsigned long pos = (unsigned long) get_block(disk, block);
+      // This block is the parent block where we would like to delete
+      struct ext2_dir_entry_2 *parent = (struct ext2_dir_entry_2 *) pos;
+      // initialize the tem value for further
+      int cur_len, len = 0;
+      struct ext2_dir_entry_2 *curr = parent;
+      unsigned long prev_pos = pos;
+      do {
+          // See whether the file name is current file
+          // If so, no need to add the len for it
+          if (compare_path_name(file_name, curr->name,  curr->name_len) == 0) {
+            printf("removal target entry %s  \n", curr->name);
+            // if the target is this two special case.. don't delete inode
+            // but delete entry and decrease link count
+              if (compare_path_name(".", curr->name, curr->name_len) == 0
+            || compare_path_name("..", curr->name,  curr->name_len) == 0 ) {
+              short_hand_flag = 1;
+            }
+              len = curr->rec_len;
+              target_inode = curr->inode;
+              // we have th current dir entry and prev dir_entry
+              // if the found inode is at first dir entry -> impossible
+              if (prev_pos == pos) {
+                curr->rec_len = EXT2_BLOCK_SIZE;
+              } else {
+                  struct ext2_dir_entry_2 *prev_entry =
+                  (struct ext2_dir_entry_2 *) prev_pos;
+                  prev_entry->rec_len += len;
+              }
+              curr->inode = 0;
+          }
+          cur_len = curr->rec_len;
+          prev_pos = pos;
+          pos = pos + cur_len;
+          curr = (struct ext2_dir_entry_2 *) pos;
+      } while (pos % EXT2_BLOCK_SIZE != 0);
+      // targe found and removed and current is not directory
+      if (target_inode != 0 && mode != 1) {
+        break;
+      }
+  }
+  if (target_inode == 0) {
+    fprintf(stderr, "Unable to delete the file dir entry: %s \n",file_name );
+    exit(1);
+  }
+  // reduce link count of the inode
+  tem_inode->i_links_count --;
+  // if the target is directory and the removal is not .. and .
+  // goes under it and try to delete the all the entry
+  if (mode == 1 && short_hand_flag == 0) {
+    delete_all_entry(disk, sb, target_inode, tem_inode) ;
+  }
+
+  // if after the current one is not a short hand . ..
+  if (short_hand_flag == 0) {
+    // check whether the there is not links anymore
+    // if so, delete the block
+    printf("%s   || %d  \n", "test", tem_inode->i_links_count);
+    // check if the link count is 0
+    if (tem_inode->i_links_count == 0) {
+        printf("%s   ||  inode remov e %ld  \n", "test", target_inode);
+         // inode bitmap to 0
+        set_bitmap(0, disk, target_inode, 0);
+        struct ext2_group_desc *bgd = get_group_desc(disk);
+        // delete block
+        int blocks = delete_blocks(disk, tem_inode);
+        printf("%s   ||  blocks %d  \n", "test", blocks);
+        // update the free inode and block
+        bgd->bg_free_blocks_count -= (-blocks);
+        sb->s_free_blocks_count -= (-blocks);
+        bgd->bg_free_inodes_count -= (-1);
+        sb->s_free_inodes_count -= (-1);
+        if (mode == 1) {
+          bgd->bg_used_dirs_count -= 1;
+        }
+    }
+  }
+  return 0;
+}
 
 
 /*
@@ -63,8 +291,7 @@ int num_free_inodes (unsigned char *disk) {
     return sb->s_free_inodes_count;
 }
 
-char* readFileBytes(const char *name)
-{
+char* readFileBytes(const char *name){
     fprintf(stdout, "read path %s\n", name );
     FILE *fl = fopen(name, "r");
     fseek(fl, 0, SEEK_END);
@@ -77,7 +304,7 @@ char* readFileBytes(const char *name)
 }
 
 /**
-this returns the neeed block for the given size
+this returns the neeed block for the given file size
 **/
 int get_required_block(int file_size) {
     int needed_blocks = file_size / EXT2_BLOCK_SIZE;
@@ -87,6 +314,9 @@ int get_required_block(int file_size) {
     return needed_blocks;
 }
 
+/**
+This will compare s1 with s2 update to s2's len
+**/
 int compare_path_name (char *s1, char *s2, int len) {
     int i;
     for (i = 0; i < len; i++) {
@@ -94,7 +324,7 @@ int compare_path_name (char *s1, char *s2, int len) {
             return 1;
         }
     }
-    if (s2[i] == '\0') {
+    if (s1[i] == '\0') {
       return 0;
     } else {
       return 1;
@@ -159,7 +389,7 @@ int read_path(unsigned char* disk, char* arg_path) {
                   temp[strlen(temp) - 1] = 0;
               }
                // printf("%s %s %d %d %d\n", temp, dir_entry->name, dir_entry->inode, strcmp(temp, dir_entry->name), compare_path_name(dir_entry->name, temp, dir_entry->name_len) );
-              if (compare_path_name(dir->name, temp, dir->name_len) == 0) {
+              if (compare_path_name(temp, dir->name, dir->name_len) == 0) {
                 next_index = dir->inode;
               }
               // Update position and index into it
@@ -212,8 +442,8 @@ unsigned char * read_disk(char *image_path) {
 
 
 /**
-* Returns the proper rec_len size for a directory entry, aligned
-* to 4 bytes.
+Returns the min number of byte need for store
+dir entry with given name_len.
 */
 int get_min_rec_len(int name_len) {
    int padding = 4 - (name_len % 4);
@@ -225,8 +455,8 @@ int get_min_rec_len(int name_len) {
 
 /**
 set the bit map value by the input value
-mode 0 is the for inode
-mode 1 is for the block
+mode 0 is the for inode update
+mode 1 is for the block update
 **/
 int set_bitmap(int mode, unsigned char *disk, int index, int value) {
   char* bitmap;
@@ -248,8 +478,8 @@ int set_bitmap(int mode, unsigned char *disk, int index, int value) {
 }
 
 /**
-return a inode number of there is inode
-return -1 if there isn't such inode exist
+return a inode number, if there is free inode
+return -1 if there isn't any free inode exist
 **/
 int find_free_inode(unsigned char *disk) {
   // use stuff from tut ex
@@ -276,6 +506,13 @@ int find_free_inode(unsigned char *disk) {
   }
 }
 
+/**
+return return a array of block numbers if there are
+enough free block, free blocks >require_block
+
+return an array with first element as -1
+if there isn't enough free block exist
+**/
 int *find_free_blocks(unsigned char *disk, int require_block) {
   // init array to hold used block
   int * res = (int *)malloc(sizeof(int) * require_block) ;
@@ -326,7 +563,7 @@ linked to the input_inode
   block_type - entry type
 
   return 1 if out of block
-  return 0 if everything is fine
+  return 0 if direntry is being added
 */
 int add_link_to_dir(struct ext2_inode* place_inode,
   unsigned char* disk, char* dir_name, unsigned int input_inode,
@@ -438,7 +675,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
 /**
 This function takes a path
 and make change the path so that
-the last file/directory entry is being store
+the last file/directory entry is being store in dir_name
 and the path is terminated at parent of the
 last file/Directory
 
@@ -483,43 +720,14 @@ struct ext2_inode * initialize_inode(unsigned char* disk, int inode_num, unsigne
 
 /**
 this return the sub string from i to j - 1
+Note: j must samller than i
 **/
 void substr(char * path, int i , int j, char* res) {
-  printf("%d and %d\n", i , j );
   for ( int k = i; k < j; k++) {
     res[k - i] = path[k];
   }
-        printf("eeee\n" );
   res[j - i] = '\0';
-          printf("eee222e\n" );
 }
-
-/**
-This checks if the path is a directory
-return -1 if it is not found or is not a directory
-return >= 0 if inode is found
-**/
-// int check_valid_path(unsigned char *disk, char *path) {
-//     // step 1: make copy of path and read the path
-//     char* tempstr =(char*) calloc(strlen(path)+1, sizeof(char));
-//     strcpy(tempstr, path);
-//     char* passed_path = parse_path(tempstr);
-//     int inodenum = read_path(disk, passed_path);
-//     free(tempstr);
-//     // step 2: check if it is a valid found
-//     if (inodenum == -1) {
-//       fprintf(stderr, "%s: No such directory\n", path);
-//       exit(ENOENT);
-//     }
-//     struct ext2_inode *place_inode = get_inode(disk, inodenum);
-//     // step 3 check if it is a valid
-//     if (!S_ISDIR(place_inode->i_mode)) {
-//       fprintf(stderr, "%s: No such directory\n", path);
-//       exit(ENOENT);
-//     }
-//     return inodenum;
-// }
-
 
 // given file name and its directory inodenumber, check if file_name is within the direcotry already
 // return 1 if it does not exist, -1 o/w.

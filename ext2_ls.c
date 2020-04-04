@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
               char curr = (char) dir_entry->name[i];
               fprintf(stdout, "%c", curr);
             }
-            if (dir_entry->name_len > 0) {
+            if ((pos + cur_len) % EXT2_BLOCK_SIZE != 0) {
               fprintf(stdout, "\n") ;
             }
           }

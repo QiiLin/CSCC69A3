@@ -96,6 +96,7 @@ int main(int argc, char **argv) {
   dir_inode->i_links_count ++;
   dir_inode->i_block[0] = free_blocks[0];
   dir_inode->i_blocks = 2;
+  dir_inode->i_ctime = (unsigned) time(NULL);
   // udpate the group descriptor
   // update used block and inodes
   struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
