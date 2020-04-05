@@ -608,7 +608,8 @@ int add_link_to_dir(struct ext2_inode* place_inode,
 
       dir = (struct ext2_dir_entry_2 *) prev_pos;
       cur_len = dir->rec_len;
-      if (cur_len - get_min_rec_len(dir->name_len) >= get_min_rec_len(strlen(dir_name))) {
+      // ensure this is the very last block
+      if (i == used_data_block - 1 && cur_len - get_min_rec_len(dir->name_len) >= get_min_rec_len(strlen(dir_name))) {
         printf("prev need size %d and need size %d \n",  get_min_rec_len(dir->name_len), get_min_rec_len(strlen(dir_name)));
         // put it in and break the loop;
         // 1. decrease the res_length of current entry
@@ -702,11 +703,15 @@ void pop_last_file_name(char *file_path, char* dir_name) {
        dir_name[counter] = file_path[i];
        counter = counter + 1;
        dir_name[counter] = '\0';
+       if (counter >= EXT2_NAME_LEN) {
+         fprintf(stderr, "Given name length is passed the length limit %s\n",
+         dir_name);
+         exit(1);
+       }
      }
    }
    // note there has to be at least on / so prev is always not -1
    file_path[prev] = '\0';
-   printf("%s\n",  dir_name);
 }
 
 
@@ -716,6 +721,7 @@ struct ext2_inode * initialize_inode(unsigned char* disk, int inode_num, unsigne
   new_inode->i_size = size;
   new_inode->i_links_count = 1;
   new_inode->i_blocks = 0;
+  new_inode->i_ctime = (unsigned) time(NULL);
   return new_inode;
 }
 
