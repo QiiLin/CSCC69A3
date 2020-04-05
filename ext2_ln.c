@@ -77,12 +77,21 @@ int main(int argc, char **argv) {
       fprintf(stderr, "6Usage: ext2_ln <ext2 image file name> [-s] <absolute source file path on disk image> <absolute path target file location on disk image>\n");
       exit(1);
     }
+
+    if (source_file[strlen(source_file) - 1] == '/') {
+      fprintf(stderr, "ln: failed to access %s: Not allow directory\n", source_file);
+      exit(ENOENT);
+    }
+    if (target_file[strlen(target_file) - 1] == '/') {
+      fprintf(stderr, "ln: failed to access %s: Not allow directory\n", target_file);
+      exit(ENOENT);
+    }
     disk = read_disk(argv[1]);
     // check source file path validity
     int source_file_inodenum = read_path(disk, source_file);
     // if source file does not exist
     if (source_file_inodenum < 0) {
-        perror("Source file does not exist.");
+        fprintf(stderr, "Source file does not exist\n");
         exit(ENOENT);
     }
     struct ext2_inode* source_file_inode = get_inode(disk, source_file_inodenum);
@@ -115,6 +124,7 @@ int main(int argc, char **argv) {
     printf("after target file remove last is :%s\n", copy_path);
     // get the target directory number
     int target_dir_inodenum = read_path(disk, copy_path);
+    free(copy_path);
     if (target_dir_inodenum == -1) {
       perror("Target directory doesn't exist");
       exit(ENOENT);
@@ -124,7 +134,7 @@ int main(int argc, char **argv) {
     printf("after target file remove2 last is :%d\n", target_dir_inodenum);
     // if it is not a directroy
     if (!S_ISDIR(dest_dir_inode->i_mode)) {
-        perror("Target directory can not be a file");
+        perror("Target parent directory can not be a file");
         exit(ENOENT);
     }
     // if it is a hardlink, copy a dir_ent only and increase source inode link count

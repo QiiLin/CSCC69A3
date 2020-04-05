@@ -28,6 +28,7 @@ int main(int argc, char **argv) {
   // and store it somewhere,
   int path_length = strlen(current_path);
   char dir_name[path_length];
+  remove_ending_slash(current_path);
   // get file name and remove the last file/directory from the current_path
   pop_last_file_name(current_path, dir_name);
   // get the inode number fo the parent_directory

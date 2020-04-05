@@ -88,7 +88,8 @@ int main(int argc, char **argv) {
     printf("file contents is %s\n", file_contents);
     printf("length of contents is %lu\n", strlen(file_contents));
     printf("fila names is %s\n", file_name);
-    int valid_filename = check_valid_file(disk, dir_inode, file_name);
+    // check if the new_file_name name exist
+    int valid_filename = check_valid_file(disk, dir_inode, new_file_name);
     if (valid_filename < 0) {
         fprintf(stderr, "A file named %s already exists in the directory",file_name);
         exit(EEXIST);
@@ -168,28 +169,8 @@ int main(int argc, char **argv) {
         int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * file_inode->i_block[12]);
         block_number = in_dir[i - 12];
       }
-      // // go through the buffer and copy the right proption of data
-      // // Note: we can't just copy exact block size ... that is not needed here
-      // // read through each char and place them into the buffer
-      // int single_char;
-      // int copy_size = 0;
-      // while ((single_char = getc(fp)) != EOF) {
-      //     tmp_buffer[copy_size] = single_char;
-      //     copy_size = copy_size + 1;
-      //     if (copy_size == EXT2_BLOCK_SIZE) {
-      //       break;
-      //     }
-      // }
-      // tmp_buffer[copy_size] = '\0';
-      // // at null terminated for the last entry
-      // if (copy_size < EXT2_BLOCK_SIZE) {
-      //   copy_size ++;
-      // }
-      // printf("%d len \n", copy_size);
-      // // after that place the stuff in the buffer into the memo
       unsigned int *block = (unsigned int *)(disk + block_number * EXT2_BLOCK_SIZE);
-      // memcpy(block, tmp_buffer, copy_size);
-      char* result = fgets(tmp_buffer, EXT2_BLOCK_SIZE+1, fp);
+      char* result = fgets(tmp_buffer, EXT2_BLOCK_SIZE + 1, fp);
       if (result == NULL) {
         printf("%s\n","Something fk up" );
       }

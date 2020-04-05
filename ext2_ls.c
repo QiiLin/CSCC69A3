@@ -13,6 +13,7 @@
 // Note: that the argv include the file itself
 // so when 2 input the expect argv should be 3
 int main(int argc, char *argv[]) {
+  int dir_tag = 0;
   unsigned char *disk;
   char * passed_path;
   char *current_path;
@@ -57,16 +58,24 @@ int main(int argc, char *argv[]) {
   }
   // read the disk image
   disk = read_disk(image_path);
+  // if it is look for a directory
+  if (current_path[strlen(current_path) - 1] == '/') {
+    dir_tag = 1;
+  }
   // goto the target path in the disk image
   // 2. try to find the directory
   int inode_index = read_path (disk, current_path);
   if (inode_index == -1) {
-    fprintf(stderr, "%s: No such file or directory\n", current_path);
+    fprintf(stderr, "No such file or directory\n");
     exit(ENOENT);
   }
   struct ext2_inode *found_node = get_inode(disk, inode_index);
   // case file
   if (!S_ISDIR(found_node->i_mode)) {
+    if (dir_tag == 1) {
+      fprintf(stderr, "%s: cannot access %s : Not a directory\n", argv[0], current_path);
+      exit(ENOENT);
+    }
     passed_path = parse_path(current_path);
     char * prev;
     while (passed_path != NULL) {

@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
 
     // Check whether the destination path is a absolute path or not
     // If not, then terminate and show error
-    if (argv[2][0] != '/') {
+    if (argv[2][0] != '/' || argv[2][strlen(argv[2]) - 1] == '/') {
         show_usuage(argv[0]);
         exit(1);
     }

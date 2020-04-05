@@ -16,6 +16,7 @@ void show_usuage(char *proginput) {
 }
 
 int main(int argc, char **argv) {
+    int is_dir_flag = 0;
     unsigned char *disk;
     char* image_path;
     char* delete_path;
@@ -54,6 +55,15 @@ int main(int argc, char **argv) {
         show_usuage(argv[0]);
         exit(1);
     }
+    // looking for directory
+    if (delete_path[strlen(delete_path) - 1] == '/') {
+      is_dir_flag = 1;
+    }
+    // if the -r is not enable and it is looking for directory
+    if (r_flag == 0 && is_dir_flag == 1) {
+      fprintf(stderr, "%s: failed to access %s: Not allow directory\n", argv[0], delete_path);
+      exit(1);
+    }
 
     // Read the image first
     disk = read_disk(image_path);
@@ -72,11 +82,20 @@ int main(int argc, char **argv) {
     // get the inode
     struct ext2_inode *tem_inode = get_inode(disk, inode_num);
 
-    // S_ISDIR returns non-zero if the file is a directory.
+    // if r-flag is not enable, but given  directo
     if (r_flag == 0 && S_ISDIR(tem_inode->i_mode)) {
         fprintf(stderr, "%s: cannot remove %s: Is a directory\n", argv[0], argv[2]);
         exit(EISDIR);
     }
+    // if it is looing for directory but found non directory
+    if(is_dir_flag == 1 && !S_ISDIR(tem_inode->i_mode)) {
+      fprintf(stderr, "%s: failed to access %s: Not such directory\n", argv[0], delete_path);
+      exit(ENOENT);
+    }
+    // // if the tem is dir and r_flag up.. remove
+    // if (r_flag == 1 && S_ISDIR(tem_inode->i_mode) && delete_path[strlen(delete_path) - 1] == '/') {
+    //   delete_path[strlen(delete_path) - 1]  = '\0';
+    // }
 
     // initialize a dir name
     char file_name[EXT2_NAME_LEN + 1];
@@ -88,7 +107,7 @@ int main(int argc, char **argv) {
     // try to see whether the parent node be found
     // Parent can always be found
     if (parent_num == -1) {
-        fprintf(stderr, "Parent directory does not exist\n");
+        fprintf(stderr, "Parent directory dddoes not exist\n");
         exit(EISDIR);
     }
 
@@ -98,6 +117,7 @@ int main(int argc, char **argv) {
     // recusrive call so I will need function that
     // can handle both file deleteion and directory deleteion
     // and recursivly called
+    printf("%d |||| %s\n",parent_num,delete_path);
     delete_inodes( disk, tem_inode, parent_num,
       file_name, S_ISDIR(tem_inode->i_mode));
 }

@@ -520,6 +520,7 @@ int *find_free_blocks(unsigned char *disk, int require_block) {
       fprintf(stderr, "no memory!\n");
       exit(1);
   }
+  struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // used code from tut ex
   struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
   char *bm = (char *) (disk + (bgd->bg_block_bitmap * EXT2_BLOCK_SIZE));
@@ -530,7 +531,7 @@ int *find_free_blocks(unsigned char *disk, int require_block) {
   } else {
     int counter = 0;
     int index = 0;
-    for (int i = 0; i < bgd->bg_free_blocks_count; i++) {
+    for (int i = 0; i < sb->s_blocks_count; i++) {
         unsigned c = bm[i / 8];                     // get the corresponding byte
         if ((c & (1 << index)) == 0) {
           res[counter] = i + 1;
@@ -771,4 +772,22 @@ int check_valid_file(unsigned char *disk, int dir_inodenum, char *file_name) {
         } while(pos % EXT2_BLOCK_SIZE != 0);
      }
     return 1;
+}
+
+
+
+/**
+Remove trailling in the path so that
+pop_last_file_name can work properly
+Note: this is isolated because the different command
+treate this differently
+**/
+void remove_ending_slash(char* path) {
+  for (int i = strlen(path) - 1; i >= 0; i--) {
+    if (path[i] == '/') {
+      path[i] = '\0';
+    } else {
+      break;
+    }
+  }
 }
