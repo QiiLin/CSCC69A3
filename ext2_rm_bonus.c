@@ -25,18 +25,15 @@ int main(int argc, char **argv) {
     // if there are less than 3 argvs
     // If not return the error
     if (argc < 3 || argc > 4) {
-      printf("%s\n","ddd" );
         show_usuage(argv[0]);
         exit(1);
     }
 
     if (argc == 3) {
-      printf("%s\n","dwwdd" );
       image_path = argv[1];
       delete_path = argv[2];
       // there is -r tag
     } else {
-      printf("%s  ddd %s  %d \n","dd11d" ,argv[2], strcmp("-r", argv[2]));
       r_flag = 1;
       image_path = argv[1];
       if (strcmp("-r", argv[2]) == 0) {
@@ -121,7 +118,6 @@ int main(int argc, char **argv) {
     // recusrive call so I will need function that
     // can handle both file deleteion and directory deleteion
     // and recursivly called
-    printf("%d |||| %s\n",parent_num,delete_path);
     delete_inodes( disk, tem_inode, parent_num,
       file_name, S_ISDIR(tem_inode->i_mode));
 }
