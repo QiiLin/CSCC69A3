@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
   int result = add_link_to_dir(place_inode, disk, dir_name, free_inode_index,
       EXT2_FT_DIR);
   // if there isn't any blcok for the new dir_entry
-  if (result == -1) {
+  if (result == -1) { 
     // need to revert the bitmap
     set_bitmap(0, disk, free_inode_index, 0);
     set_bitmap(1, disk, free_blocks[0], 0);

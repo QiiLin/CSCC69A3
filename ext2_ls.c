@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
       prev = passed_path;
       passed_path = strtok(NULL, "/");
     }
-    fprintf(stdout, "%s \n", prev);
+    fprintf(stdout, "%s", prev);
   } else {
     int i , block_number;
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
         block_number = found_node->i_block[i];
       } else {
         // indirect case
-        int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * found_node->i_block[12] );
+        unsigned int *in_dir = (unsigned int *) (disk + EXT2_BLOCK_SIZE * found_node->i_block[12] );
         block_number = in_dir[i - 12];
       }
       unsigned long pos = (unsigned long) disk + block_number * EXT2_BLOCK_SIZE;
@@ -107,6 +107,7 @@ int main(int argc, char *argv[]) {
       // loop it by boundary
       // when the length gets reset to 0 .. either we reach the end of blocks
       // or we reach a empty dir entry and need to stop here
+      printf("%s  %d\n", "block num" , block_number);
       do {
         int cur_len = dir_entry->rec_len;
         if (option_a == 1 ||
@@ -125,6 +126,9 @@ int main(int argc, char *argv[]) {
           dir_entry = (struct ext2_dir_entry_2 *) pos;
 
       } while ( pos % EXT2_BLOCK_SIZE != 0) ;
+      if (i != used_data_block-1) {
+        fprintf(stdout, "\n") ;
+      }
     }
   }
   return 0;

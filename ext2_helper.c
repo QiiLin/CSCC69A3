@@ -88,7 +88,7 @@ int delete_blocks(unsigned char *disk, struct ext2_inode* current) {
           indirect_block_index = current->i_block[12];
         }
         // indirect case
-        int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * current->i_block[12]);
+        unsigned int *in_dir = (unsigned int *) (disk + EXT2_BLOCK_SIZE * current->i_block[12]);
         block_number = in_dir[i - 12];
       }
       set_bitmap(1,disk, block_number, 0);
@@ -109,7 +109,7 @@ void delete_all_entry(unsigned char* disk, struct ext2_super_block *sb, int targ
   int dir_entry_count = 0;
   int block;
   int counter;
-  int *tem_list;
+  unsigned int *tem_list;
   //  at max the number of entries will always samller than the 1024
   unsigned long remove_entries[EXT2_BLOCK_SIZE];
   // go through the entries in the tem_inode
@@ -120,7 +120,7 @@ void delete_all_entry(unsigned char* disk, struct ext2_super_block *sb, int targ
       if (counter < 12) {
           block = tem_inode->i_block[counter];
       } else {
-          tem_list = (int *) get_block(disk, tem_inode->i_block[12]);
+          tem_list = (unsigned int *) get_block(disk, tem_inode->i_block[12]);
           block = tem_list[counter - 12];
       }
       unsigned long pos = (unsigned long) get_block(disk, block);
@@ -158,7 +158,7 @@ int delete_inodes(unsigned char* disk, struct ext2_inode* tem_inode, int parent_
   int short_hand_flag = 0;
   int counter;
   int block;
-  int *tem_list;
+  unsigned int *tem_list;
   unsigned long target_inode = 0;
   int used_data_block = ((parent_inode->i_blocks)/(2<<sb->s_log_block_size));
   // to avoid go through extra block
@@ -168,7 +168,7 @@ int delete_inodes(unsigned char* disk, struct ext2_inode* tem_inode, int parent_
       if (counter < 12) {
           block = parent_inode->i_block[counter];
       } else {
-          tem_list = (int *) get_block(disk, parent_inode->i_block[12]);
+          tem_list = (unsigned int *) get_block(disk, parent_inode->i_block[12]);
           block = tem_list[counter - 12];
       }
       unsigned long pos = (unsigned long) get_block(disk, block);
@@ -340,6 +340,8 @@ int read_path(unsigned char* disk, char* arg_path) {
   struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // go through the path without change the input
   char* copy_path =(char*) calloc(strlen(arg_path)+1, sizeof(char));
+  // remember to do space check
+  printf("%s\n", "remember to handle calloc" );
   strcpy(copy_path, arg_path);
   char* path = parse_path(copy_path);
 
@@ -375,7 +377,7 @@ int read_path(unsigned char* disk, char* arg_path) {
             block_number = current_inode->i_block[i];
           } else {
             // indirect case
-            int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * current_inode->i_block[12]);
+            unsigned int *in_dir = (unsigned int *) (disk + EXT2_BLOCK_SIZE * current_inode->i_block[12]);
             block_number = in_dir[i - 12];
           }
           // Get the position in bytes and index to block
@@ -446,7 +448,7 @@ Returns the min number of byte need for store
 dir entry with given name_len.
 */
 int get_min_rec_len(int name_len) {
-   int padding = 4 - (name_len % 4);
+   int padding = (name_len % 4) == 0 ? 0 : 4 - (name_len % 4);
    return 8 + name_len + padding;
 }
 
@@ -487,9 +489,9 @@ int find_free_inode(unsigned char *disk) {
   // get the inode bitmap
   char *bmi = (char *) (disk + (bgd->bg_inode_bitmap * EXT2_BLOCK_SIZE));
   struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
-  if (bgd->bg_free_inodes_count == 0) {
-    return -1;
-  } else {
+  // if (bgd->bg_free_inodes_count == 0) {
+  //   return -1;
+  // } else {
     int index2 = 0;
     for (int i = 0; i < sb->s_inodes_count; i++) {
         unsigned c = bmi[i / 8];                     // get the corresponding byte
@@ -503,7 +505,7 @@ int find_free_inode(unsigned char *disk) {
         if (++index2 == 8) (index2 = 0); // increment shift index, if > 8 reset.
     }
     return -1;
-  }
+  // }
 }
 
 /**
@@ -525,15 +527,16 @@ int *find_free_blocks(unsigned char *disk, int require_block) {
   struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
   char *bm = (char *) (disk + (bgd->bg_block_bitmap * EXT2_BLOCK_SIZE));
   // quick way to check
-  if (bgd->bg_free_blocks_count < require_block) {
-    res[0] = -1;
-    return res;
-  } else {
+  // if (bgd->bg_free_blocks_count < require_block) {
+  //   res[0] = -1;
+  //   return res;
+  // } else {
     int counter = 0;
     int index = 0;
     for (int i = 0; i < sb->s_blocks_count; i++) {
-        unsigned c = bm[i / 8];                     // get the corresponding byte
-        if ((c & (1 << index)) == 0) {
+        unsigned c = bm[i / 8];
+                           // get the corresponding byte
+        if (((c & (1 << index)) > 0) == 0) {
           res[counter] = i + 1;
           counter = counter + 1;
           if (counter == require_block) {
@@ -548,7 +551,7 @@ int *find_free_blocks(unsigned char *disk, int require_block) {
 
     res[0] = -1;
     return res;
-  }
+  // }
 }
 
 
@@ -572,7 +575,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
   struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // link between the dir_inode and the place_inode
   int block_num;
-  int *in_direct_block;
+  unsigned int *in_direct_block;
   int inserted = 0;
   int i;
   int block_usage = 0;
@@ -587,13 +590,13 @@ int add_link_to_dir(struct ext2_inode* place_inode,
       if (i < 12) {
           block_num = place_inode->i_block[i];
       } else {
-          in_direct_block = (int *) (disk + EXT2_BLOCK_SIZE * place_inode->i_block[12]);
+          in_direct_block = (unsigned int *) (disk + EXT2_BLOCK_SIZE * place_inode->i_block[12]);
           block_num = in_direct_block[i - 12];
       }
       pos = (unsigned long) disk + block_num * EXT2_BLOCK_SIZE;
       struct ext2_dir_entry_2 *dir = (struct ext2_dir_entry_2 *) pos;
       inserted = 0;
-      printf("%s and block %d \n",  dir_name, block_num);
+      printf("%d and limit %d and used_data_block :%d  and block %d \n", i,  used_data_block,(place_inode->i_blocks),  block_num);
       unsigned long prev_pos;
       int cur_len;
       do {
@@ -610,7 +613,8 @@ int add_link_to_dir(struct ext2_inode* place_inode,
       cur_len = dir->rec_len;
       // ensure this is the very last block
       if (i == used_data_block - 1 && cur_len - get_min_rec_len(dir->name_len) >= get_min_rec_len(strlen(dir_name))) {
-        printf("prev need size %d and need size %d \n",  get_min_rec_len(dir->name_len), get_min_rec_len(strlen(dir_name)));
+        printf("prev need size %d and need size %d, actually size %ld \n",  get_min_rec_len(dir->name_len),
+        get_min_rec_len(strlen(dir_name)), strlen(dir_name));
         // put it in and break the loop;
         // 1. decrease the res_length of current entry
         dir->rec_len = get_min_rec_len(dir->name_len);
@@ -628,46 +632,54 @@ int add_link_to_dir(struct ext2_inode* place_inode,
         break;
       }
   }
-  printf("prev need s \n");
   if (inserted != 1) {
+    printf("settin------------------g up a new block for it for place_inode\n");
     // create a new block and link it
     // 1. create a new blocks
     int* free_blocks = find_free_blocks(disk, 1);
     if (free_blocks[0] == -1) {
       return 1;
     }
+    set_bitmap(1, disk, free_blocks[0], 1);
     pos = (unsigned long) (disk + EXT2_BLOCK_SIZE * free_blocks[0]);
     new_dir = (struct ext2_dir_entry_2 *) pos;
     strcpy(new_dir->name, dir_name);
     new_dir->name_len = strlen(dir_name);
     new_dir->inode = input_inode;
-    new_dir-> rec_len = get_min_rec_len(new_dir->name_len);
+    // new block size has to be this
+    new_dir-> rec_len = EXT2_BLOCK_SIZE;
     new_dir-> file_type = block_type;
     // if the last block is at normal blcok
     if (i < 12) {
       place_inode->i_block[i] = free_blocks[0];
     } else if (i > 12) {
+      printf("settin------- inidrect trick here for contents for place_inode : %d,   free block: %d\n", i - 12, free_blocks[0]);
       // if there is already an in_direct_block
-      in_direct_block = (int *) (disk + EXT2_BLOCK_SIZE * place_inode->i_block[12]);
+      in_direct_block = (unsigned int *) (disk + EXT2_BLOCK_SIZE * place_inode->i_block[12]);
       in_direct_block[i - 12] = free_blocks[0];
     } else {
+      printf("settin------- inidrect trickk for place_inode : %d\n", i - 12);
       // if it is on the in_direct_block
       // need another block as indirec t
       int* free_indirect_blocks = find_free_blocks(disk, 1);
+      printf("freeblock numb: %d in_direct_block : %d\n",free_blocks[0], free_indirect_blocks[0] );
       if (free_indirect_blocks[0] == -1) {
+        set_bitmap(1, disk, free_blocks[0], 0);
         return 1;
       }
-      in_direct_block = (int *)  (disk + EXT2_BLOCK_SIZE * free_indirect_blocks[0]);
+      in_direct_block = (unsigned int *)  (disk + EXT2_BLOCK_SIZE * free_indirect_blocks[0]);
       in_direct_block[0] =  free_blocks[0];
-      place_inode->i_block[12] = in_direct_block[0];
+      place_inode->i_block[12] = free_indirect_blocks[0];
       set_bitmap(1, disk, free_indirect_blocks[0], 1);
       block_usage = block_usage + 1;
     }
-    set_bitmap(1, disk, free_blocks[0], 1);
     // once the allocate and operation is truely completed
     block_usage = block_usage + 1;
     struct ext2_group_desc *bgd = get_group_desc(disk);
+    sb->s_free_blocks_count -= block_usage;
     bgd->bg_free_blocks_count -= block_usage;
+    place_inode->i_blocks += (block_usage*2);
+    place_inode->i_size += (EXT2_BLOCK_SIZE);
     // also update the block usage
   }
     printf("prev need 2s \n");
@@ -722,6 +734,7 @@ struct ext2_inode * initialize_inode(unsigned char* disk, int inode_num, unsigne
   new_inode->i_links_count = 1;
   new_inode->i_blocks = 0;
   new_inode->i_ctime = (unsigned) time(NULL);
+  new_inode->i_dtime = (unsigned) 0;
   return new_inode;
 }
 

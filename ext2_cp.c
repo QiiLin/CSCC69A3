@@ -17,7 +17,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Usage: ext2_cp <ext2 image file name> <file path on your OS> <abs file path on image>\n");
         exit(1);
     }
-    FILE * fp = fopen(argv[2], "r");
+    // read in raw
+    FILE * fp = fopen(argv[2], "rb");
     if (fp == NULL) {
         perror("Reading local file %s unsuccessfully");
         exit(ENOENT);
@@ -141,7 +142,7 @@ int main(int argc, char **argv) {
     struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, file_size);
     file_inode->i_blocks = (required_block + indir_block) *2;
     // step 3: open file Buffer
-    char tmp_buffer[EXT2_BLOCK_SIZE+1];
+    unsigned char tmp_buffer[EXT2_BLOCK_SIZE+1];
     unsigned int * indirect_block;
     // step 4: create block and fill the block in there first
     for(int i = 0; i < required_block; i++) {
@@ -166,15 +167,13 @@ int main(int argc, char **argv) {
         block_number = file_inode->i_block[i];
       } else {
         // indirect case
-        int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * file_inode->i_block[12]);
+        unsigned int *in_dir = (unsigned int *) (disk + EXT2_BLOCK_SIZE * file_inode->i_block[12]);
         block_number = in_dir[i - 12];
       }
       unsigned int *block = (unsigned int *)(disk + block_number * EXT2_BLOCK_SIZE);
-      char* result = fgets(tmp_buffer, EXT2_BLOCK_SIZE + 1, fp);
-      if (result == NULL) {
-        printf("%s\n","Something fk up" );
-      }
-      memcpy(block, tmp_buffer, EXT2_BLOCK_SIZE);
+      long unsigned int result_count = fread(tmp_buffer, 1,  EXT2_BLOCK_SIZE, fp);
+      printf("%s %ld\n","Something not fk up",  result_count);
+      memcpy(block, tmp_buffer, result_count);
     }
     // update used block and inodes
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);

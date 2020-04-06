@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
         perror("Target file already existed, please give another path");
         exit(EEXIST);
     }
-    int name_len = strlen(target_file);
+    int name_len = strlen(source_file);
     char target_filename[name_len];
 
     char* copy_path =(char*) calloc(strlen(target_file)+1, sizeof(char));
@@ -158,16 +158,16 @@ int main(int argc, char **argv) {
       printf("new inode create 1 in is %d\n", free_inode_index);
       struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
       struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
-      struct ext2_inode * new_inode = initialize_inode(disk, free_inode_index, EXT2_S_IFLNK, name_len*4);
-      // if (name_len <= 15) {
-      if (0) {
+      struct ext2_inode * new_inode = initialize_inode(disk, free_inode_index, EXT2_S_IFLNK, name_len);
+      if (name_len <= 15) {
         // TODO need to double check with aht is the i-blocks value
-        new_inode->i_blocks = 1;
+        new_inode->i_blocks = 0;
         // set the path into the path variable
-        for (int i = 0; i < name_len; i++) {
-          new_inode->i_block[i] = (unsigned int) target_file[i];
-        }
-        printf("new inode create 2 in is %s\n", (unsigned char*) new_inode->i_block);
+        // for (int i = 0; i < name_len; i++) {
+        //   new_inode->i_block[i] = (unsigned int) source_file[i];
+        // }
+        memcpy(new_inode->i_block, source_file, name_len);
+        printf("The new path is %s, %s\n", (unsigned char*) new_inode->i_block, source_file);
         // update bit map for inode
         set_bitmap(0, disk, free_inode_index, 1);
         // update the dest directory with a new dir_entry
@@ -192,17 +192,18 @@ int main(int argc, char **argv) {
         if (required_block > 12) {
           indir_block = 1;
         }
-        printf("required_block %d %d\n", name_len, required_block + indir_block);
         // get the free blocks
-        int* free_blocks = find_free_blocks(disk, required_block);
+        int* free_blocks = find_free_blocks(disk, required_block + indir_block);
         if (free_blocks[0] == -1) {
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
-                printf("requi222222k %d %d\n", name_len, required_block + indir_block);
+        printf("total required name_len %d totoal block %d\n", name_len, required_block + indir_block);
+        printf("target inode %d, target_file name:  %s\n", free_inode_index, target_filename);
         // claim those block
         for (int i = 0; i < required_block + indir_block; i++) {
-          set_bitmap(0, disk, free_blocks[i], 1);
+          printf("update bitmape for block %d\n", free_blocks[i]);
+          set_bitmap(1, disk, free_blocks[i], 1);
         }
         // claim those inode
         set_bitmap(0, disk, free_inode_index, 1);
@@ -212,17 +213,18 @@ int main(int argc, char **argv) {
         if (result == -1) {
           // need to revert the bitmap
           for (int i = 0; i < required_block + indir_block; i++) {
-            set_bitmap(0, disk, free_blocks[i], 0);
+            set_bitmap(1, disk, free_blocks[i], 0);
           }
           set_bitmap(0, disk, free_inode_index, 0);
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
+        printf("new inode %d and %d \n", free_inode_index, name_len);
+        printf("new blocks %d and %d \n", free_blocks[0], free_blocks[1]);
         // start fill the
         new_inode->i_blocks = (required_block + indir_block) *2;
         new_inode->i_size = name_len;
         unsigned int * indirect_block;
-        printf("%d\n",1 );
         // start set up blocks
         for(int i = 0; i < required_block; i++) {
           if (i < 12) {
@@ -238,42 +240,46 @@ int main(int argc, char **argv) {
             indirect_block[i-12] = free_blocks[i];
           }
         }
-                printf("%d\n",2 );
-
         int start = 0;
         int end = 0;
         int block_number;
-        for (int i = 0; i < required_block; i++) {
+        int i;
+        char current[EXT2_BLOCK_SIZE + 1];
+        for ( i = 0; i < required_block; i++) {
           if (i < 12) {
             // direct case
             block_number = new_inode->i_block[i];
           } else {
             // indirect case
-            int *in_dir = (int *) (disk + EXT2_BLOCK_SIZE * new_inode->i_block[12]);
+            unsigned int *in_dir = (unsigned int *) (disk + EXT2_BLOCK_SIZE * new_inode->i_block[12]);
             block_number = in_dir[i - 12];
           }
-                    printf("%d\n", 22 );
+          printf("%d ||| \n", i);
+
+          int padding = 0;
           // get the start of block
           unsigned char * current_block = (unsigned char *) disk + EXT2_BLOCK_SIZE * block_number;
-          if (i == required_block-1) {
+          if (i == required_block - 1) {
             start = i*EXT2_BLOCK_SIZE;
             end = start + (name_len) % EXT2_BLOCK_SIZE;
+            padding += 1;
           } else {
             start =  i*EXT2_BLOCK_SIZE;
             end = (i+1) *EXT2_BLOCK_SIZE;
           }
-          printf("%d | %s | %d \n", start,target_file, end);
-          char current[EXT2_BLOCK_SIZE + 1];
-          substr(target_file, start, end, current);
-            printf("%d\n", 1133 );
-          memcpy(current_block, current , end - start);
+          // strncpy(current, source_file + start, end);
+          substr(source_file, start, end, current);
+          printf("%d | %s | %d | %d || %c ||\n", start, current , end, end - start + padding, current[end - start + padding] );
+          memcpy(current_block, current, EXT2_BLOCK_SIZE);
         }
-                printf("%d\n", 3 );
+        printf("Content in first block %c  || %c\n", ((char*) disk + EXT2_BLOCK_SIZE * new_inode->i_block[0])[EXT2_BLOCK_SIZE],((char*) disk + EXT2_BLOCK_SIZE * new_inode->i_block[0])[EXT2_BLOCK_SIZE-1] );
+        printf("Content in second block %s\n", (char*) disk + EXT2_BLOCK_SIZE * new_inode->i_block[1]);
+        printf("used block: %d, name_len:%d , src_ in_direct_block: %d\n", required_block, name_len, indir_block);
         // udpate the group descriptor
         bgd->bg_free_inodes_count -= 1;
         sb->s_free_inodes_count -= 1;
-        bgd->bg_free_blocks_count -= required_block;
-        sb->s_free_blocks_count -= required_block;
+        bgd->bg_free_blocks_count -= (required_block + indir_block);
+        sb->s_free_blocks_count -= (required_block + indir_block);
       }
     }
 }

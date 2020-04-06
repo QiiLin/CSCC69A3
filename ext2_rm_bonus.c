@@ -59,6 +59,10 @@ int main(int argc, char **argv) {
     if (delete_path[strlen(delete_path) - 1] == '/') {
       is_dir_flag = 1;
     }
+    if (delete_path[strlen(delete_path) - 1] == '.') {
+      fprintf(stderr, "%s: refuse to handle . or .. for the path: %s\n", argv[0], delete_path);
+      exit(1);
+    }
     // if the -r is not enable and it is looking for directory
     if (r_flag == 0 && is_dir_flag == 1) {
       fprintf(stderr, "%s: failed to access %s: Not allow directory\n", argv[0], delete_path);
