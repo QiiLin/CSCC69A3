@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
       // do another check if the parent directory exist
       dir_inode = read_path(disk, argv[3]);
       if (dir_inode == -1) {
-        fprintf(stderr, "%s: No such file or directory\n", argv[3]);
+        fprintf(stderr, "%s: No such f1ile or directory\n", argv[3]);
         exit(ENOENT);
       }
       place_inode = get_inode(disk, dir_inode);
