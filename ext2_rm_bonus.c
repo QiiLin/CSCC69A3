@@ -12,7 +12,7 @@
 /* Helper function for invalid input
 */
 void show_usuage(char *proginput) {
-    fprintf(stderr, "This command's Usage: %s disk_img abs_path\n", proginput);
+    fprintf(stderr, "This command's Usage: %s disk_img [-r] abs_path\n", proginput);
 }
 
 int main(int argc, char **argv) {
