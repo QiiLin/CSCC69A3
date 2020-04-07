@@ -188,6 +188,7 @@ int main(int argc, char **argv) {
         // get the free blocks
         int* free_blocks = find_free_blocks(disk, required_block + indir_block);
         if (free_blocks[0] == -1) {
+          free(free_blocks);
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
@@ -206,6 +207,7 @@ int main(int argc, char **argv) {
             set_bitmap(1, disk, free_blocks[i], 0);
           }
           set_bitmap(0, disk, free_inode_index, 0);
+          free(free_blocks);
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }

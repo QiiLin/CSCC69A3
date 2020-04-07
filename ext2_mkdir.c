@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
       exit(ENOENT);
   }
 
-  // allocate a new inode 
+  // allocate a new inode
   int free_inode_index = find_free_inode(disk);
   if (free_inode_index == -1) {
     fprintf(stderr, "%s: No inode avaiable\n", argv[0]);
@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
   // allocate blocks
   int* free_blocks = find_free_blocks(disk, 1);
   if (free_blocks[0] == -1) {
+    free(free_blocks);
     fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
     exit(1);
   }
@@ -70,6 +71,7 @@ int main(int argc, char **argv) {
     // need to revert the bitmap
     set_bitmap(0, disk, free_inode_index, 0);
     set_bitmap(1, disk, free_blocks[0], 0);
+    free(free_blocks);
     fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
     exit(1);
   }

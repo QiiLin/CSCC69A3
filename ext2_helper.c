@@ -9,7 +9,7 @@
 #include <time.h>
 #include "ext2.h"
 #include <errno.h>
-
+#include "ext2_helper.h"
 
 // Helper function to read the block
 unsigned char *get_block(unsigned char*disk, int block_num) {
@@ -260,17 +260,6 @@ int num_free_inodes (unsigned char *disk) {
     return sb->s_free_inodes_count;
 }
 
-char* readFileBytes(const char *name){
-    FILE *fl = fopen(name, "r");
-    fseek(fl, 0, SEEK_END);
-    long len = ftell(fl);
-    char *ret = (char *) malloc(len);
-    fseek(fl, 0, SEEK_SET);
-    fread(ret, 1, len, fl);
-    fclose(fl);
-    return ret;
-}
-
 /**
 this returns the neeed block for the given file size
 **/
@@ -308,7 +297,10 @@ int read_path(unsigned char* disk, char* arg_path) {
   struct ext2_super_block *sb = (struct ext2_super_block *)get_super_block(disk);
   // go through the path without change the input
   char* copy_path =(char*) calloc(strlen(arg_path)+1, sizeof(char));
-  // remember to do space check
+  if (copy_path == NULL) {
+      fprintf(stderr, "no memory!\n");
+      exit(1);
+  }
   strcpy(copy_path, arg_path);
   char* path = parse_path(copy_path);
 
@@ -598,6 +590,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
     // 1. create a new blocks
     int* free_blocks = find_free_blocks(disk, 1);
     if (free_blocks[0] == -1) {
+      free(free_blocks);
       return 1;
     }
     set_bitmap(1, disk, free_blocks[0], 1);
@@ -621,6 +614,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
       // need another block as indirec t
       int* free_indirect_blocks = find_free_blocks(disk, 1);
       if (free_indirect_blocks[0] == -1) {
+        free(free_indirect_blocks);
         set_bitmap(1, disk, free_blocks[0], 0);
         return 1;
       }
@@ -629,6 +623,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
       place_inode->i_block[12] = free_indirect_blocks[0];
       set_bitmap(1, disk, free_indirect_blocks[0], 1);
       block_usage = block_usage + 1;
+      free(free_indirect_blocks);
     }
     // once the allocate and operation is truely completed
     block_usage = block_usage + 1;
@@ -638,6 +633,7 @@ int add_link_to_dir(struct ext2_inode* place_inode,
     place_inode->i_blocks += (block_usage*2);
     place_inode->i_size += (EXT2_BLOCK_SIZE);
     // also update the block usage
+    free(free_blocks);
   }
   return 0;
 }

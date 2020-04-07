@@ -98,6 +98,7 @@ int main(int argc, char **argv) {
     }
     int* free_blocks = find_free_blocks(disk, required_block + indir_block);
     if (free_blocks[0] == -1) {
+      free(free_blocks);
       fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
       exit(1);
     }
@@ -114,6 +115,7 @@ int main(int argc, char **argv) {
       for (int i = 0; i < required_block + indir_block; i++) {
         set_bitmap(1, disk, free_blocks[i], 1);
       }
+      free(free_blocks);
       fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
       exit(1);
     }
@@ -123,7 +125,7 @@ int main(int argc, char **argv) {
     // step 3: set file Buffer
     unsigned char tmp_buffer[EXT2_BLOCK_SIZE+1];
     unsigned int * indirect_block;
-    // step 4: create block and fill the block in there 
+    // step 4: create block and fill the block in there
     for(int i = 0; i < required_block; i++) {
       if (i < 12) {
         file_inode->i_block[i] = free_blocks[i];
