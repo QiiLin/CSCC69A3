@@ -13,14 +13,15 @@
 unsigned char *disk;
 
 int main(int argc, char **argv) {
+    // check path parameter is the not enough or the input is not absolute path
     if(argc != 4 || argv[3][0] != '/') {
         fprintf(stderr, "Usage: ext2_cp <ext2 image file name> <file path on your OS> <abs file path on image>\n");
         exit(1);
     }
-    // read in raw
+    // read file as raw binary
     FILE * fp = fopen(argv[2], "rb");
     if (fp == NULL) {
-        perror("Reading local file %s unsuccessfully");
+        fprintf(stderr, "%s\n","Reading local file %s unsuccessfully" );
         exit(ENOENT);
     }
     // step 1: read the disk
@@ -28,7 +29,7 @@ int main(int argc, char **argv) {
     // step 2: get info from the file
     struct stat fileInfo;
     if (stat(argv[2], &fileInfo) != 0) {
-        perror("file was not found");
+        fprintf(stderr, "%s\n", "file was not found");
         exit(ENOENT);
     }
     if (!S_ISREG(fileInfo.st_mode)) {
@@ -38,7 +39,6 @@ int main(int argc, char **argv) {
     // by defn the file name is the name from the input file
     char *file_name = get_file_name(argv[2]);
     // check if the path passed in is a valid asbolute path leading to a directory
-    // int is_path = check_valid_path(inum, inumc, dirs, dirsin, sb, bmi, bgd, in, argv[3]);
     int dir_inode = read_path(disk, argv[3]);
     // init dir_name
     char* new_file_name;
@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < required_block + indir_block; i++) {
       set_bitmap(1, disk, free_blocks[i], 1);
     }
-    // update the directory
+    // add dir_entry for the new inode
     int result = add_link_to_dir(place_inode, disk, new_file_name, free_inode_index,
         EXT2_FT_REG_FILE);
     if (result == -1) {
@@ -120,10 +120,10 @@ int main(int argc, char **argv) {
     // Step 2: start create inodes and update it property
     struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, file_size);
     file_inode->i_blocks = (required_block + indir_block) *2;
-    // step 3: open file Buffer
+    // step 3: set file Buffer
     unsigned char tmp_buffer[EXT2_BLOCK_SIZE+1];
     unsigned int * indirect_block;
-    // step 4: create block and fill the block in there first
+    // step 4: create block and fill the block in there 
     for(int i = 0; i < required_block; i++) {
       if (i < 12) {
         file_inode->i_block[i] = free_blocks[i];

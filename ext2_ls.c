@@ -62,8 +62,7 @@ int main(int argc, char *argv[]) {
   if (current_path[strlen(current_path) - 1] == '/') {
     dir_tag = 1;
   }
-  // goto the target path in the disk image
-  // 2. try to find the directory
+  // find the target path's inode
   int inode_index = read_path (disk, current_path);
   if (inode_index == -1) {
     fprintf(stderr, "No such file or directory\n");
@@ -87,9 +86,8 @@ int main(int argc, char *argv[]) {
     int i , block_number;
     struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
     // case directory
-    // used data block
+    // get used data block to avoid go through extra block
     int used_data_block = ((found_node->i_blocks)/(2<<sb->s_log_block_size));
-    // to avoid go through extra block
     used_data_block = used_data_block > 12 ? used_data_block - 1: used_data_block;
 
     for (i = 0; i < used_data_block; i++ ) {
@@ -125,7 +123,7 @@ int main(int argc, char *argv[]) {
           dir_entry = (struct ext2_dir_entry_2 *) pos;
 
       } while ( pos % EXT2_BLOCK_SIZE != 0) ;
-      if (i != used_data_block-1) {
+      if (i != used_data_block - 1) {
         fprintf(stdout, "\n") ;
       }
     }

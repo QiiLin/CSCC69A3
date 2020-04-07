@@ -13,23 +13,24 @@
 int main(int argc, char **argv) {
   unsigned char *disk;
   char* current_path;
+  // make sure the parameter is enogu and the input is abs path
   if (argc != 3 || argv[2][0] != '/') {
     fprintf(stderr, "Usage: %s <disk_img path> <new directory's absolute path>\n", argv[0]);
     exit(1);
   }
   current_path = argv[2];
+  // read the disk image
   disk = read_disk(argv[1]);
   int inode_index = read_path (disk, current_path);
   if (inode_index != -1) {
     fprintf(stderr, "%s: already exist\n", argv[2]);
     exit(EEXIST);
   }
-  // loop through the path and remove the last directory in it
-  // and store it somewhere,
   int path_length = strlen(current_path);
   char dir_name[path_length];
+  // remove any ending slash
   remove_ending_slash(current_path);
-  // get file name and remove the last file/directory from the current_path
+  // get the parent directory path and
   pop_last_file_name(current_path, dir_name);
   // get the inode number fo the parent_directory
   inode_index = read_path(disk, current_path);
@@ -38,7 +39,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "%s: No such directory\n", argv[2]);
     exit(ENOENT);
   }
-  // get the actual inode
+  // get the parent inode
   struct ext2_inode *place_inode = get_inode(disk, inode_index);
   // make sure it is a directory
   if (!S_ISDIR(place_inode->i_mode)) {
@@ -46,7 +47,7 @@ int main(int argc, char **argv) {
       exit(ENOENT);
   }
 
-  // allocate inodes
+  // allocate a new inode 
   int free_inode_index = find_free_inode(disk);
   if (free_inode_index == -1) {
     fprintf(stderr, "%s: No inode avaiable\n", argv[0]);
@@ -65,7 +66,7 @@ int main(int argc, char **argv) {
   int result = add_link_to_dir(place_inode, disk, dir_name, free_inode_index,
       EXT2_FT_DIR);
   // if there isn't any blcok for the new dir_entry
-  if (result == -1) { 
+  if (result == -1) {
     // need to revert the bitmap
     set_bitmap(0, disk, free_inode_index, 0);
     set_bitmap(1, disk, free_blocks[0], 0);
