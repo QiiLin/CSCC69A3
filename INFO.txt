@@ -1,5 +1,5 @@
-﻿Qi Lin                linqi9
-Tianji Liu        liutia59
+﻿Qi Lin               linqi9
+Tianji Liu           liutia59
 Jialiang Lin         linjial2
 
 
@@ -7,4 +7,20 @@ Jialiang Lin         linjial2
 
 
 
-For this assignment, we implemented all the required functionality that specified. In addition we also implement the bonus rm. We also did the check for trailing slash and we decided that when the input path has an ending slash, it will be looking for a directory, if such directory does not exist, we will return error. Also, we did try our best to output an error message similar to the linux system, but I think there are some error messages that aren't the same as the linux system. For the ln, we asked the TAs about the case where the soft link with path less than 15, some of them said it is fine to ignore it, but some of them said they will look for this. But we implemented this as well.
+For this assignment, we implemented most the required functionality that specified.
+The only feature that doesn't full functioning is the ext2_ln -s, we did exactly
+what is being described and passed the e2fsck. However, when we try to mount
+the image and using vim to open it, the file content is empty, however when
+we run ls -al, there is a clearly link notation on the symbolic link file.
+We tried the last three days on debugging this issue, but we still couldn't
+fix it. But I tried my best to add comment and explain my logic on that portion.
+
+In addition we also implement the bonus rm. We also did the check for trailing slash
+and we decided that when the input path has an ending slash, it will be looking for a directory,
+if such directory does not exist, we will return error.
+Also, we did try our best to output an error message similar to the linux system,
+but I think there are some error messages that aren't the same as the linux system.
+
+Note: For the ln, we asked the TAs about the case where the soft link with path less than 15,
+some of them said it is fine to ignore it, but some of them said they will look for this.
+But we implemented this as well.
