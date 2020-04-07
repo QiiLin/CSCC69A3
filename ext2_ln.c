@@ -102,9 +102,6 @@ int main(int argc, char **argv) {
         exit(EISDIR);
     }
     // check target file path validity
-    printf("first tmp copy is :%s\n", target_file);
-    printf("second copy is :%s\n", target_file);
-    printf("after parse target file name is :%s\n", target_file);
     int target_file_inodenum = read_path(disk, target_file);
     if (target_file_inodenum > 0) {
         struct ext2_inode* target_file_inode = get_inode(disk, target_file_inodenum);
@@ -121,7 +118,6 @@ int main(int argc, char **argv) {
     char* copy_path =(char*) calloc(strlen(target_file)+1, sizeof(char));
     strcpy(copy_path, target_file);
     pop_last_file_name(copy_path, target_filename);
-    printf("after target file remove last is :%s\n", copy_path);
     // get the target directory number
     int target_dir_inodenum = read_path(disk, copy_path);
     free(copy_path);
@@ -129,9 +125,7 @@ int main(int argc, char **argv) {
       perror("Target directory doesn't exist");
       exit(ENOENT);
     }
-    printf("after target file remove 1last is :%d\n", target_dir_inodenum);
     struct ext2_inode* dest_dir_inode = get_inode(disk, target_dir_inodenum);
-    printf("after target file remove2 last is :%d\n", target_dir_inodenum);
     // if it is not a directroy
     if (!S_ISDIR(dest_dir_inode->i_mode)) {
         perror("Target parent directory can not be a file");
@@ -140,7 +134,6 @@ int main(int argc, char **argv) {
     // if it is a hardlink, copy a dir_ent only and increase source inode link count
     if (!soft_link) {
         source_file_inode->i_links_count++;
-        printf("the directory inode num is : %d %s\n", target_dir_inodenum,target_filename);
         int result = add_link_to_dir
         (dest_dir_inode, disk, target_filename, source_file_inodenum,
             EXT2_FT_REG_FILE);
@@ -155,7 +148,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "%s: no inode avaiable\n", argv[0]);
         exit(1);
       }
-      printf("new inode create 1 in is %d\n", free_inode_index);
       struct ext2_group_desc *bgd = (struct ext2_group_desc *) (disk + 2048);
       struct ext2_super_block *sb = (struct ext2_super_block *)(disk + 1024);
       struct ext2_inode * new_inode = initialize_inode(disk, free_inode_index, EXT2_S_IFLNK, name_len);
@@ -167,7 +159,6 @@ int main(int argc, char **argv) {
         //   new_inode->i_block[i] = (unsigned int) source_file[i];
         // }
         memcpy(new_inode->i_block, source_file, name_len);
-        printf("The new path is %s, %s\n", (unsigned char*) new_inode->i_block, source_file);
         // update bit map for inode
         set_bitmap(0, disk, free_inode_index, 1);
         // update the dest directory with a new dir_entry
@@ -198,11 +189,8 @@ int main(int argc, char **argv) {
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
-        printf("total required name_len %d totoal block %d\n", name_len, required_block + indir_block);
-        printf("target inode %d, target_file name:  %s\n", free_inode_index, target_filename);
         // claim those block
         for (int i = 0; i < required_block + indir_block; i++) {
-          printf("update bitmape for block %d\n", free_blocks[i]);
           set_bitmap(1, disk, free_blocks[i], 1);
         }
         // claim those inode
@@ -219,8 +207,6 @@ int main(int argc, char **argv) {
           fprintf(stderr, "%s: no blocks avaiable\n", argv[0]);
           exit(1);
         }
-        printf("new inode %d and %d \n", free_inode_index, name_len);
-        printf("new blocks %d and %d \n", free_blocks[0], free_blocks[1]);
         // start fill the
         new_inode->i_blocks = (required_block + indir_block) *2;
         new_inode->i_size = name_len;
@@ -254,7 +240,6 @@ int main(int argc, char **argv) {
             unsigned int *in_dir = (unsigned int *) (disk + EXT2_BLOCK_SIZE * new_inode->i_block[12]);
             block_number = in_dir[i - 12];
           }
-          printf("%d ||| \n", i);
 
           int padding = 0;
           // get the start of block
@@ -269,12 +254,8 @@ int main(int argc, char **argv) {
           }
           // strncpy(current, source_file + start, end);
           substr(source_file, start, end, current);
-          printf("%d | %s | %d | %d || %c ||\n", start, current , end, end - start + padding, current[end - start + padding] );
           memcpy(current_block, current, EXT2_BLOCK_SIZE);
         }
-        printf("Content in first block %c  || %c\n", ((char*) disk + EXT2_BLOCK_SIZE * new_inode->i_block[0])[EXT2_BLOCK_SIZE],((char*) disk + EXT2_BLOCK_SIZE * new_inode->i_block[0])[EXT2_BLOCK_SIZE-1] );
-        printf("Content in second block %s\n", (char*) disk + EXT2_BLOCK_SIZE * new_inode->i_block[1]);
-        printf("used block: %d, name_len:%d , src_ in_direct_block: %d\n", required_block, name_len, indir_block);
         // udpate the group descriptor
         bgd->bg_free_inodes_count -= 1;
         sb->s_free_inodes_count -= 1;

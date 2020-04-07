@@ -75,20 +75,8 @@ int main(int argc, char **argv) {
         exit(ENOENT);
       }
     }
-    printf("is_path variable value is %d\n", dir_inode);
-    // By Qi: it is not longer needed since check valid path will handle it
-    // if (dir_inode < 0) {
-    //     fprintf(stderr, "No such file or directory\n");
-    //     exit(ENOENT);
-    // }
-    // get file byte size
     long file_size = fileInfo.st_size;
     char *file_contents = readFileBytes(argv[2]);
-    printf("file size is %ld\n", file_size);
-    printf("file name is %s, the length of file name is %lu\n", file_name, strlen(file_name));
-    printf("file contents is %s\n", file_contents);
-    printf("length of contents is %lu\n", strlen(file_contents));
-    printf("fila names is %s\n", file_name);
     // check if the new_file_name name exist
     int valid_filename = check_valid_file(disk, dir_inode, new_file_name);
     if (valid_filename < 0) {
@@ -97,8 +85,6 @@ int main(int argc, char **argv) {
     }
     int current_free_blocks = num_free_blocks(disk);
     int current_free_inodes = num_free_inodes(disk);
-    printf("    free blocks: %d\n", current_free_blocks);
-    printf("    free inodes: %d\n", current_free_inodes);
 
     // start the operation
     // Step 1: make sure we have enough block and inode to perform this
@@ -114,7 +100,6 @@ int main(int argc, char **argv) {
     if (required_block > 12) {
       indir_block = 1;
     }
-    printf("%d  need blocks \n", required_block);
     int* free_blocks = find_free_blocks(disk, required_block + indir_block);
     if (free_blocks[0] == -1) {
       fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
@@ -136,8 +121,6 @@ int main(int argc, char **argv) {
       fprintf(stderr, "%s: No blocks avaiable\n", argv[0]);
       exit(1);
     }
-    printf("have found a free inode at inodenum %d\n", free_inode_index);
-    printf("has enough blocks? %d\n", required_block);
     // Step 2: start create inodes and update it property
     struct ext2_inode *file_inode = initialize_inode(disk, free_inode_index,EXT2_S_IFREG, file_size);
     file_inode->i_blocks = (required_block + indir_block) *2;
@@ -172,7 +155,6 @@ int main(int argc, char **argv) {
       }
       unsigned int *block = (unsigned int *)(disk + block_number * EXT2_BLOCK_SIZE);
       long unsigned int result_count = fread(tmp_buffer, 1,  EXT2_BLOCK_SIZE, fp);
-      printf("%s %ld\n","Something not fk up",  result_count);
       memcpy(block, tmp_buffer, result_count);
     }
     // update used block and inodes

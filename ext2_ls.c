@@ -107,7 +107,6 @@ int main(int argc, char *argv[]) {
       // loop it by boundary
       // when the length gets reset to 0 .. either we reach the end of blocks
       // or we reach a empty dir entry and need to stop here
-      printf("%s  %d\n", "block num" , block_number);
       do {
         int cur_len = dir_entry->rec_len;
         if (option_a == 1 ||
