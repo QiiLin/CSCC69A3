@@ -76,16 +76,12 @@ int main(int argc, char **argv) {
       }
     }
     long file_size = fileInfo.st_size;
-    char *file_contents = readFileBytes(argv[2]);
     // check if the new_file_name name exist
     int valid_filename = check_valid_file(disk, dir_inode, new_file_name);
     if (valid_filename < 0) {
         fprintf(stderr, "A file named %s already exists in the directory",file_name);
         exit(EEXIST);
     }
-    int current_free_blocks = num_free_blocks(disk);
-    int current_free_inodes = num_free_inodes(disk);
-
     // start the operation
     // Step 1: make sure we have enough block and inode to perform this
     // allocate inodes
