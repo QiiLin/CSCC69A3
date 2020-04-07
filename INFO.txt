@@ -1,0 +1,10 @@
+﻿Qi Lin                linqi9
+Tianji Liu        liutia59
+Jialiang Lin         linjial2
+
+
+
+
+
+
+For this assignment, we implemented all the required functionality that specified. In addition we also implement the bonus rm. We also did the check for trailing slash and we decided that when the input path has an ending slash, it will be looking for a directory, if such directory does not exist, we will return error. Also, we did try our best to output an error message similar to the linux system, but I think there are some error messages that aren't the same as the linux system. For the ln, we asked the TAs about the case where the soft link with path less than 15, some of them said it is fine to ignore it, but some of them said they will look for this. But we implemented this as well.
